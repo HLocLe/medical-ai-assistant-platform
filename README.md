@@ -1,1 +1,1 @@
-# SEP490_MedicalAIAssitant
+# SEP490_MedicalAIAssistant
