@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MedMateAI.Infrastructure.Repositories;
 
-public sealed class GenericRepository<TEntity> : IGenericRepository<TEntity>
+public class GenericRepository<TEntity> : IGenericRepository<TEntity>
     where TEntity : BaseEntity
 {
     private readonly ApplicationDbContext _context;

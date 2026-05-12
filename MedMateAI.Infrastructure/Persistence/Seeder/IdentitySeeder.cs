@@ -1,7 +1,6 @@
 using MedMateAI.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace MedMateAI.Infrastructure.Persistence.Seeder;
@@ -49,6 +48,28 @@ public static class IdentitySeeder
             if (createResult.Succeeded)
             {
                 await userManager.AddToRoleAsync(adminUser, "Admin");
+            }
+        }
+
+        var staffEmail = "staff@medmate.local";
+        var staffPassword = "Staff@12345";
+        var staffDisplayName = "Demo Staff";
+
+        var existingStaff = await userManager.FindByEmailAsync(staffEmail);
+        if (existingStaff is null)
+        {
+            var staffUser = new ApplicationUser
+            {
+                UserName = staffEmail,
+                Email = staffEmail,
+                EmailConfirmed = true,
+                DisplayName = staffDisplayName,
+            };
+
+            var createResult = await userManager.CreateAsync(staffUser, staffPassword);
+            if (createResult.Succeeded)
+            {
+                await userManager.AddToRoleAsync(staffUser, "Staff");
             }
         }
     }
