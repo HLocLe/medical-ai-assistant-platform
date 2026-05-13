@@ -18,14 +18,11 @@ public sealed class MedicalDepartmentsController : ControllerBase
     }
 
     [HttpGet]
-    [ProducesResponseType(typeof(ApiResponse<PagedMedicalDepartmentsResponse>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> List(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10,
-        CancellationToken cancellationToken = default)
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<MedicalDepartmentResponse>>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> List(CancellationToken cancellationToken = default)
     {
-        var data = await _medicalDepartmentService.ListMedicalDepartmentsAsync(page, pageSize, cancellationToken);
-        return Ok(new ApiResponse<PagedMedicalDepartmentsResponse>
+        var data = await _medicalDepartmentService.ListMedicalDepartmentsAsync(cancellationToken);
+        return Ok(new ApiResponse<IReadOnlyList<MedicalDepartmentResponse>>
         {
             Success = true,
             Message = "OK",
