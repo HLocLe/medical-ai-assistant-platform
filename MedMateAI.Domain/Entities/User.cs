@@ -15,5 +15,9 @@ public sealed class User
     public Gender? Gender { get; set; }
 
     public DateOnly? DateOfBirth { get; set; }
+
+    public UserStatus Status { get; set; }
+
+    public bool IsDeleted { get; set; }
 }
 

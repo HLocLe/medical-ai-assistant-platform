@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
+using MedMateAI.Domain.Enums;
 
 namespace MedMateAI.Infrastructure.Auth.Services;
 
@@ -64,6 +65,8 @@ public sealed class AuthService : IAuthService
             Address = request.Address,
             Gender = request.Gender,
             DateOfBirth = request.DateOfBirth,
+            Status = UserStatus.Confirmed,
+            IsDeleted = false,
         };
 
         var identityResult = await _userManager.CreateAsync(user, request.Password);
@@ -87,7 +90,52 @@ public sealed class AuthService : IAuthService
             ExpiresAtUtc = default,
         });
     }
-    
+    //
+     public async Task<(bool Succeeded, IEnumerable<string> Errors, AuthResponse? Result)> RegisterForStaffAsync(
+        RegisterRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(request.Password, request.confirmPassword, StringComparison.Ordinal))
+        {
+            return (false, new[] { "Password and confirmation do not match." }, null);
+        }
+
+        var userName = string.IsNullOrWhiteSpace(request.UserName) ? request.Email : request.UserName;
+
+        var user = new ApplicationUser
+        {
+            UserName = userName,
+            Email = request.Email,
+            DisplayName = request.DisplayName,
+            Address = request.Address,
+            Status = UserStatus.Pending,
+            Gender = request.Gender,
+            DateOfBirth = request.DateOfBirth,
+            IsDeleted = false,
+        };
+
+        var identityResult = await _userManager.CreateAsync(user, request.Password);
+
+        if (!identityResult.Succeeded)
+        {
+            return (false, identityResult.Errors.Select(e => e.Description), null);
+        }
+
+        var addRoleResult = await _userManager.AddToRoleAsync(user, "Staff");
+        
+        if (!addRoleResult.Succeeded)
+        {
+            return (false, addRoleResult.Errors.Select(e => e.Description), null);
+        }
+
+        return (true, Array.Empty<string>(), new AuthResponse
+        {
+            Email = user.Email ?? string.Empty,
+            UserId = user.Id,
+            ExpiresAtUtc = default,
+        });
+    }
+
     //
     public async Task<(bool Succeeded, AuthResponse? Result)> LoginAsync(
         LoginRequest request,
@@ -96,6 +144,11 @@ public sealed class AuthService : IAuthService
         var user = await _userManager.FindByEmailAsync(request.Email);
 
         if (user is null)
+        {
+            return (false, null);
+        }
+
+        if (user.IsDeleted)
         {
             return (false, null);
         }
@@ -182,7 +235,6 @@ public sealed class AuthService : IAuthService
             return (false, new[] { "Google ClientId is not configured." }, null);
         }
 
-        // Frontend may send a JSON string with quotes; normalize it.
         var credential = request.Credential.Trim().Trim('"');
 
         GoogleJsonWebSignature.Payload payload;
@@ -216,6 +268,8 @@ public sealed class AuthService : IAuthService
                 Email = email,
                 EmailConfirmed = true,
                 DisplayName = payload.Name,
+                Status = UserStatus.Confirmed,
+                IsDeleted = false,
             };
 
             var createResult = await _userManager.CreateAsync(user);
@@ -231,7 +285,11 @@ public sealed class AuthService : IAuthService
             }
         }
 
-    
+        if (user.IsDeleted)
+        {
+            return (false, new[] { "Account is no longer active." }, null);
+        }
+
         var roles = await _userManager.GetRolesAsync(user);
 
         var (token, expires) = _jwtTokenGenerator.CreateAccessToken(
@@ -278,6 +336,7 @@ public sealed class AuthService : IAuthService
             AccessToken = token,
             Email = user.Email ?? string.Empty,
             UserId = user.Id,
+            Roles = roles.ToArray(),
             ExpiresAtUtc = expires,
         });
     }
@@ -310,6 +369,11 @@ public sealed class AuthService : IAuthService
         }
 
         var user = existing.User;
+        if (user.IsDeleted)
+        {
+            return (false, null);
+        }
+
         if (await _userManager.IsLockedOutAsync(user))
         {
             return (false, null);

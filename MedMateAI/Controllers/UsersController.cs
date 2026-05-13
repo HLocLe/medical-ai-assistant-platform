@@ -1,4 +1,5 @@
 using MedMateAI.Application.DTOs;
+using MedMateAI.Application.DTOs.Request;
 using MedMateAI.Application.DTOs.Response;
 using MedMateAI.Application.IService;
 using Microsoft.AspNetCore.Authorization;
@@ -40,6 +41,7 @@ public sealed class UsersController : ControllerBase
             UserId = current.IdentityId,
             Email = current.Email,
             Name = current.DisplayName,
+            Status = current.Status,
             Roles = roles,
         };
 
@@ -48,6 +50,93 @@ public sealed class UsersController : ControllerBase
             Success = true,
             Message = "OK",
             Data = data,
+        });
+    }
+
+    
+    [HttpGet]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse<PagedUsersResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> List([FromQuery] int page = 1, CancellationToken cancellationToken = default)
+    {
+        var data = await _userService.ListUsersAsync(page, cancellationToken);
+        return Ok(new ApiResponse<PagedUsersResponse>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
+    [HttpPut("{userId}")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Update(Guid userId, [FromBody] UpdateUserRequest request, CancellationToken cancellationToken)
+    {
+        var (ok, errors) = await _userService.UpdateUserAsync(userId, request, cancellationToken);
+        if (!ok)
+        {
+            return BadRequest(new ApiResponse
+            {
+                Success = false,
+                Message = "Update user failed.",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse
+        {
+            Success = true,
+            Message = "User updated.",
+        });
+    }
+
+    [HttpDelete("{userId}")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SoftDelete(Guid userId, CancellationToken cancellationToken)
+    {
+        var (ok, errors) = await _userService.SoftDeleteUserAsync(userId, cancellationToken);
+        if (!ok)
+        {
+            return BadRequest(new ApiResponse
+            {
+                Success = false,
+                Message = "Delete user failed.",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse
+        {
+            Success = true,
+            Message = "User deleted (soft).",
+        });
+    }
+
+    [HttpPost("{userId}/approve")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Approve(Guid userId, CancellationToken cancellationToken)
+    {
+        var (ok, errors) = await _userService.ApproveUserAsync(userId, cancellationToken);
+        if (!ok)
+        {
+            return BadRequest(new ApiResponse
+            {
+                Success = false,
+                Message = "Approve user failed.",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse
+        {
+            Success = true,
+            Message = "User approved.",
         });
     }
 }

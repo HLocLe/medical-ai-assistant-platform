@@ -1,3 +1,4 @@
+using MedMateAI.Domain.Enums;
 using MedMateAI.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -13,6 +14,13 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
 
         builder.Property(x => x.Address)
             .HasMaxLength(512);
+
+        builder.Property(x => x.Status)
+            .HasConversion<int>()
+            .HasDefaultValue(UserStatus.Confirmed);
+
+        builder.Property(x => x.IsDeleted)
+            .HasDefaultValue(false);
     }
 }
 

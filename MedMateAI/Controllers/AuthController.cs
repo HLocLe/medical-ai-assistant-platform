@@ -43,6 +43,31 @@ public sealed class AuthController : ControllerBase
         });
     }
 
+    [HttpPost("register/staff")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RegisterStaff([FromBody] RegisterRequest request, CancellationToken cancellationToken)
+    {
+        var (succeeded, errors, result) = await _authService.RegisterForStaffAsync(request, cancellationToken);
+        if (!succeeded)
+        {
+            return BadRequest(new ApiResponse<AuthResponse>
+            {
+                Success = false,
+                Message = "Staff registration failed",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse<AuthResponse>
+        {
+            Success = true,
+            Message = "Staff account created. Status is pending until approved.",
+            Data = result,
+        });
+    }
+
     [HttpPost("login")]
     [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status200OK)]

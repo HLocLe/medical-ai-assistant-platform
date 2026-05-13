@@ -1,15 +1,21 @@
 using System.Security.Claims;
 using AutoMapper;
+using MedMateAI.Application.DTOs.Request;
+using MedMateAI.Application.DTOs.Response;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 using MedMateAI.Infrastructure.Identity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace MedMateAI.Infrastructure.Auth.Services;
 
 public sealed class UserService : IUserService
 {
+    public const int UsersPageSize = 10;
+
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IMapper _mapper;
@@ -43,7 +49,12 @@ public sealed class UserService : IUserService
         }
 
         var appUser = await _userManager.FindByIdAsync(userId.ToString());
-        return appUser is null ? null : _mapper.Map<User>(appUser);
+        if (appUser is null || appUser.IsDeleted)
+        {
+            return null;
+        }
+
+        return _mapper.Map<User>(appUser);
     }
 
     public async Task<User?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default)
@@ -53,12 +64,21 @@ public sealed class UserService : IUserService
             return null;
         }
 
-        var appUser = await _userManager.FindByEmailAsync(email.Trim());
+        var normalized = _userManager.NormalizeEmail(email.Trim());
+        var appUser = await _userManager.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized && !u.IsDeleted, cancellationToken);
+
         return appUser is null ? null : _mapper.Map<User>(appUser);
     }
 
     public async Task<bool> UserExistsAsync(string email, CancellationToken cancellationToken = default)
-        => await _userManager.FindByEmailAsync(email.Trim()) is not null;
+    {
+        var normalized = _userManager.NormalizeEmail(email.Trim());
+        return await _userManager.Users.AnyAsync(
+            u => u.NormalizedEmail == normalized && !u.IsDeleted,
+            cancellationToken);
+    }
 
     public async Task<bool> IsInRoleAsync(Guid userId, string role, CancellationToken cancellationToken = default)
     {
@@ -68,7 +88,7 @@ public sealed class UserService : IUserService
         }
 
         var appUser = await _userManager.FindByIdAsync(userId.ToString());
-        return appUser is not null && await _userManager.IsInRoleAsync(appUser, role);
+        return appUser is not null && !appUser.IsDeleted && await _userManager.IsInRoleAsync(appUser, role);
     }
 
     public async Task<IReadOnlyList<string>> GetRolesAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -79,7 +99,7 @@ public sealed class UserService : IUserService
         }
 
         var appUser = await _userManager.FindByIdAsync(userId.ToString());
-        if (appUser is null)
+        if (appUser is null || appUser.IsDeleted)
         {
             return Array.Empty<string>();
         }
@@ -87,5 +107,139 @@ public sealed class UserService : IUserService
         var roles = await _userManager.GetRolesAsync(appUser);
         return roles.ToArray();
     }
-}
 
+    public async Task<PagedUsersResponse> ListUsersAsync(int pageNumber, CancellationToken cancellationToken = default)
+    {
+        var page = pageNumber < 1 ? 1 : pageNumber;
+
+        var query = _userManager.Users
+            .AsNoTracking()
+            .Where(u => !u.IsDeleted)
+            .OrderBy(u => u.Email);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)UsersPageSize);
+
+        var items = await query
+            .Skip((page - 1) * UsersPageSize)
+            .Take(UsersPageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedUsersResponse
+        {
+            PageNumber = page,
+            PageSize = UsersPageSize,
+            TotalCount = totalCount,
+            TotalPages = totalPages,
+            Items = items.ConvertAll(u => _mapper.Map<User>(u)),
+        };
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> UpdateUserAsync(
+        Guid userId,
+        UpdateUserRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return (false, new[] { "Invalid user id." });
+        }
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null || user.IsDeleted)
+        {
+            return (false, new[] { "User not found." });
+        }
+
+        if (request.DisplayName is not null)
+        {
+            user.DisplayName = request.DisplayName;
+        }
+
+        if (request.Address is not null)
+        {
+            user.Address = request.Address;
+        }
+
+        if (request.Gender.HasValue)
+        {
+            user.Gender = request.Gender;
+        }
+
+        if (request.DateOfBirth.HasValue)
+        {
+            user.DateOfBirth = request.DateOfBirth;
+        }
+
+        if (request.PhoneNumber is not null)
+        {
+            user.PhoneNumber = request.PhoneNumber;
+        }
+
+        var updateResult = await _userManager.UpdateAsync(user);
+        return updateResult.Succeeded
+            ? (true, Array.Empty<string>())
+            : (false, updateResult.Errors.Select(e => e.Description));
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> SoftDeleteUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return (false, new[] { "Invalid user id." });
+        }
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null)
+        {
+            return (false, new[] { "User not found." });
+        }
+
+        if (user.IsDeleted)
+        {
+            return (false, new[] { "User is already deleted." });
+        }
+
+        user.IsDeleted = true;
+    
+
+        var updateResult = await _userManager.UpdateAsync(user);
+        return updateResult.Succeeded
+            ? (true, Array.Empty<string>())
+            : (false, updateResult.Errors.Select(e => e.Description));
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> ApproveUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return (false, new[] { "Invalid user id." });
+        }
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null)
+        {
+            return (false, new[] { "User not found." });
+        }
+
+        if (user.IsDeleted)
+        {
+            return (false, new[] { "Cannot approve a deleted user." });
+        }
+
+        if (user.Status != UserStatus.Pending)
+        {
+            return (false, new[] { "Only pending accounts can be approved." });
+        }
+
+        user.Status = UserStatus.Confirmed;
+        var updateResult = await _userManager.UpdateAsync(user);
+        return updateResult.Succeeded
+            ? (true, Array.Empty<string>())
+            : (false, updateResult.Errors.Select(e => e.Description));
+    }
+}

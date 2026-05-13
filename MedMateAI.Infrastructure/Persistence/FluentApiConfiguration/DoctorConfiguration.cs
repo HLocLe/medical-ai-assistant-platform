@@ -1,0 +1,21 @@
+using MedMateAI.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace MedMateAI.Infrastructure.Persistence.FluentAPiConfiguration;
+
+public sealed class DoctorConfiguration : IEntityTypeConfiguration<Doctor>
+{
+    public void Configure(EntityTypeBuilder<Doctor> builder)
+    {
+        builder.ToTable("Doctor");
+
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id).HasColumnName("DoctorId").ValueGeneratedOnAdd();
+
+        builder.HasOne(x => x.FacilityDepartment)
+            .WithMany(x => x.Doctors)
+            .HasForeignKey(x => x.FacilityDepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}

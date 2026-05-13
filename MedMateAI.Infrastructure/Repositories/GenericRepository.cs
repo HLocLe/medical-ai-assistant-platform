@@ -19,7 +19,7 @@ public class GenericRepository<TEntity> : IGenericRepository<TEntity>
 
     public async Task<TEntity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _set.FindAsync(new object?[] { id! }, cancellationToken);
+        return await _set.FindAsync(new object?[] { id }, cancellationToken);
     }
 
     public async Task<IReadOnlyList<TEntity>> GetAllAsync(CancellationToken cancellationToken = default)
