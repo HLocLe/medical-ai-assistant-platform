@@ -1,5 +1,5 @@
-using MedMateAI.Application.DTOs.Request;
-using MedMateAI.Application.DTOs.Response;
+using MedMateAI.Application.DTOs.Auth.Requests;
+using MedMateAI.Application.DTOs.Auth.Responses;
 
 namespace MedMateAI.Application.IService;
 

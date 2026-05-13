@@ -1,10 +1,9 @@
-using MedMateAI.Application.DTOs.Request;
-using MedMateAI.Application.DTOs.Response;
+using MedMateAI.Application.DTOs.Auth.Requests;
+using MedMateAI.Application.DTOs.Auth.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Infrastructure.Auth.Providers;
 using MedMateAI.Infrastructure.Auth.Security;
 using MedMateAI.Infrastructure.Identity;
-using MedMateAI.Infrastructure;
 using Google.Apis.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -12,7 +11,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using MedMateAI.Domain.Enums;
-using Microsoft.AspNetCore.Builder;
 
 namespace MedMateAI.Infrastructure.Auth.Services;
 

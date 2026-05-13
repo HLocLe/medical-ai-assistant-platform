@@ -1,4 +1,4 @@
-namespace MedMateAI.Application.DTOs.Request;
+namespace MedMateAI.Application.DTOs.Auth.Requests;
 
 public sealed class ChangePasswordWithOtpRequest
 {
@@ -10,4 +10,3 @@ public sealed class ChangePasswordWithOtpRequest
 
     public string ConfirmNewPassword { get; set; } = string.Empty;
 }
-

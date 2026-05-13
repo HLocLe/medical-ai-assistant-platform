@@ -1,4 +1,4 @@
-namespace MedMateAI.Application.DTOs.Request;
+namespace MedMateAI.Application.DTOs.MedicalDepartments.Requests;
 
 public sealed class CreateMedicalDepartmentRequest
 {

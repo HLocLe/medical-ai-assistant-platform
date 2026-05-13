@@ -1,4 +1,4 @@
-namespace MedMateAI.Application.DTOs.Response;
+namespace MedMateAI.Application.DTOs.MedicalDepartments.Responses;
 
 public sealed class MedicalDepartmentResponse
 {

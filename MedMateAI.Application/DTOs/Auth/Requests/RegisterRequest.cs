@@ -1,6 +1,6 @@
-namespace MedMateAI.Application.DTOs.Request;
-
 using MedMateAI.Domain.Enums;
+
+namespace MedMateAI.Application.DTOs.Auth.Requests;
 
 public class RegisterRequest
 {
@@ -12,5 +12,4 @@ public class RegisterRequest
     public string? Address { get; set; }
     public Gender? Gender { get; set; }
     public DateOnly? DateOfBirth { get; set; }
-    
 }
