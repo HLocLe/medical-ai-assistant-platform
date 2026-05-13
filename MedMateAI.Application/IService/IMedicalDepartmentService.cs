@@ -5,9 +5,7 @@ namespace MedMateAI.Application.IService;
 
 public interface IMedicalDepartmentService
 {
-    Task<PagedMedicalDepartmentsResponse> ListMedicalDepartmentsAsync(
-        int pageNumber,
-        int pageSize,
+    Task<IReadOnlyList<MedicalDepartmentResponse>> ListMedicalDepartmentsAsync(
         CancellationToken cancellationToken = default);
 
     Task<MedicalDepartmentResponse?> GetMedicalDepartmentByIdAsync(

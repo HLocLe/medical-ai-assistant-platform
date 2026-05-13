@@ -1,5 +1,6 @@
 using System.Text;
 using AutoMapper;
+using MedMateAI.Application.Service;
 using MedMateAI.Application.IService;
 using MedMateAI.Infrastructure.Identity;
 using MedMateAI.Domain.Persistence;
@@ -7,7 +8,6 @@ using MedMateAI.Domain.Repository;
 using MedMateAI.Infrastructure.Auth.Options;
 using MedMateAI.Infrastructure.Auth.Providers;
 using MedMateAI.Infrastructure.Auth.Services;
-using MedMateAI.Infrastructure.Services;
 using MedMateAI.Infrastructure.Mapping;
 using MedMateAI.Infrastructure.Persistence.Seeder;
 using MedMateAI.Infrastructure.Repositories;

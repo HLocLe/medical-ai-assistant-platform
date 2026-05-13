@@ -1,90 +1,65 @@
-using System.Globalization;
 using System.Text.Json;
 using MedMateAI.Application.DTOs.Request;
 using MedMateAI.Application.DTOs.Response;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Persistence;
-using Microsoft.EntityFrameworkCore;
+using MedMateAI.Domain.Repository;
 using Microsoft.Extensions.Caching.Distributed;
 
-namespace MedMateAI.Infrastructure.Services;
+namespace MedMateAI.Application.Service;
 
 public sealed class MedicalDepartmentService : IMedicalDepartmentService
 {
-    private const int DefaultPageSize = 10;
-    private const string ListCacheVersionKey = "medical-departments:list-version";
+    private const string AllDepartmentsCacheKey = "medical-departments:all";
+    private const string DepartmentCacheKeyPrefix = "medical-departments:";
+
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
     private static readonly DistributedCacheEntryOptions CacheOptions = new()
     {
         AbsoluteExpirationRelativeToNow = CacheTtl,
     };
 
-    private readonly ApplicationDbContext _dbContext;
+    private readonly IGenericRepository<MedicalDepartment> _medicalDepartmentRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDistributedCache _cache;
 
     public MedicalDepartmentService(
-        ApplicationDbContext dbContext,
+        IGenericRepository<MedicalDepartment> medicalDepartmentRepository,
         IUnitOfWork unitOfWork,
         IDistributedCache cache)
     {
-        _dbContext = dbContext;
+        _medicalDepartmentRepository = medicalDepartmentRepository;
         _unitOfWork = unitOfWork;
         _cache = cache;
     }
 
-    public async Task<PagedMedicalDepartmentsResponse> ListMedicalDepartmentsAsync(
-        int pageNumber,
-        int pageSize,
+    public async Task<IReadOnlyList<MedicalDepartmentResponse>> ListMedicalDepartmentsAsync(
         CancellationToken cancellationToken = default)
     {
-        var page = pageNumber < 1 ? 1 : pageNumber;
-        var size = pageSize < 1 ? DefaultPageSize : pageSize;
-        var listVersion = await GetListCacheVersionAsync(cancellationToken);
-        var cacheKey = $"medical-departments:page:{page}:size:{size}:v:{listVersion}";
-
-        var cached = await _cache.GetStringAsync(cacheKey, cancellationToken);
+        var cached = await _cache.GetStringAsync(AllDepartmentsCacheKey, cancellationToken);
         if (!string.IsNullOrWhiteSpace(cached))
         {
-            var cachedResponse = JsonSerializer.Deserialize<PagedMedicalDepartmentsResponse>(cached);
+            var cachedResponse = JsonSerializer.Deserialize<List<MedicalDepartmentResponse>>(cached);
             if (cachedResponse is not null)
             {
                 return cachedResponse;
             }
         }
 
-        var query = _dbContext.MedicalDepartments
-            .AsNoTracking()
+        var entities = await _medicalDepartmentRepository.GetAllAsync(cancellationToken);
+
+        var response = entities
             .Where(x => !x.IsDeleted)
-            .OrderBy(x => x.DepartmentName);
+            .OrderBy(x => x.DepartmentName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .Select(MapToResponse)
+            .ToList();
 
-        var totalCount = await query.CountAsync(cancellationToken);
-        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)size);
-
-        var items = await query
-            .Skip((page - 1) * size)
-            .Take(size)
-            .Select(x => new MedicalDepartmentResponse
-            {
-                Id = x.Id,
-                DepartmentName = x.DepartmentName,
-                Description = x.Description,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt,
-            })
-            .ToListAsync(cancellationToken);
-
-        var response = new PagedMedicalDepartmentsResponse
-        {
-            PageNumber = page,
-            PageSize = size,
-            TotalCount = totalCount,
-            TotalPages = totalPages,
-            Items = items,
-        };
-
-        await _cache.SetStringAsync(cacheKey, JsonSerializer.Serialize(response), CacheOptions, cancellationToken);
+        await _cache.SetStringAsync(
+            AllDepartmentsCacheKey,
+            JsonSerializer.Serialize(response),
+            CacheOptions,
+            cancellationToken);
 
         return response;
     }
@@ -93,7 +68,12 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = $"medical-departments:{id}";
+        if (id == Guid.Empty)
+        {
+            return null;
+        }
+
+        var cacheKey = GetDepartmentCacheKey(id);
         var cached = await _cache.GetStringAsync(cacheKey, cancellationToken);
         if (!string.IsNullOrWhiteSpace(cached))
         {
@@ -104,26 +84,20 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
             }
         }
 
-        var item = await _dbContext.MedicalDepartments
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted && x.Id == id)
-            .Select(x => new MedicalDepartmentResponse
-            {
-                Id = x.Id,
-                DepartmentName = x.DepartmentName,
-                Description = x.Description,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt,
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (item is null)
+        var entity = await _medicalDepartmentRepository.GetByIdAsync(id, cancellationToken);
+        if (entity is null || entity.IsDeleted)
         {
             return null;
         }
 
-        await _cache.SetStringAsync(cacheKey, JsonSerializer.Serialize(item), CacheOptions, cancellationToken);
-        return item;
+        var response = MapToResponse(entity);
+        await _cache.SetStringAsync(
+            cacheKey,
+            JsonSerializer.Serialize(response),
+            CacheOptions,
+            cancellationToken);
+
+        return response;
     }
 
     public async Task<(bool Succeeded, IEnumerable<string> Errors, MedicalDepartmentResponse? Data)> CreateMedicalDepartmentAsync(
@@ -143,10 +117,9 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
             CreatedAt = DateTime.UtcNow,
         };
 
-        _dbContext.MedicalDepartments.Add(entity);
+        _medicalDepartmentRepository.Add(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        await InvalidateListCacheAsync(cancellationToken);
+        await InvalidateDepartmentCachesAsync(entity.Id, cancellationToken);
 
         return (true, Array.Empty<string>(), MapToResponse(entity));
     }
@@ -166,10 +139,8 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
             return (false, false, new[] { "Department name cannot be empty when provided." }, null);
         }
 
-        var entity = await _dbContext.MedicalDepartments
-            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
-
-        if (entity is null)
+        var entity = await _medicalDepartmentRepository.GetByIdAsync(id, cancellationToken);
+        if (entity is null || entity.IsDeleted)
         {
             return (false, true, new[] { "Medical department not found." }, null);
         }
@@ -186,11 +157,9 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
 
         entity.UpdatedAt = DateTime.UtcNow;
 
+        _medicalDepartmentRepository.Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        var idCacheKey = $"medical-departments:{id}";
-        await _cache.RemoveAsync(idCacheKey, cancellationToken);
-        await InvalidateListCacheAsync(cancellationToken);
+        await InvalidateDepartmentCachesAsync(id, cancellationToken);
 
         return (true, false, Array.Empty<string>(), MapToResponse(entity));
     }
@@ -204,10 +173,8 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
             return (false, false, new[] { "Invalid medical department id." });
         }
 
-        var entity = await _dbContext.MedicalDepartments
-            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
-
-        if (entity is null)
+        var entity = await _medicalDepartmentRepository.GetByIdAsync(id, cancellationToken);
+        if (entity is null || entity.IsDeleted)
         {
             return (false, true, new[] { "Medical department not found." });
         }
@@ -215,11 +182,9 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
         entity.IsDeleted = true;
         entity.UpdatedAt = DateTime.UtcNow;
 
+        _medicalDepartmentRepository.Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        var idCacheKey = $"medical-departments:{id}";
-        await _cache.RemoveAsync(idCacheKey, cancellationToken);
-        await InvalidateListCacheAsync(cancellationToken);
+        await InvalidateDepartmentCachesAsync(id, cancellationToken);
 
         return (true, false, Array.Empty<string>());
     }
@@ -236,34 +201,18 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
         };
     }
 
-    private async Task<int> GetListCacheVersionAsync(CancellationToken cancellationToken)
+    private async Task InvalidateDepartmentCachesAsync(Guid? id, CancellationToken cancellationToken)
     {
-        var rawValue = await _cache.GetStringAsync(ListCacheVersionKey, cancellationToken);
-        if (int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var version) && version > 0)
+        await _cache.RemoveAsync(AllDepartmentsCacheKey, cancellationToken);
+
+        if (id.HasValue && id.Value != Guid.Empty)
         {
-            return version;
+            await _cache.RemoveAsync(GetDepartmentCacheKey(id.Value), cancellationToken);
         }
-
-        const int initialVersion = 1;
-        await _cache.SetStringAsync(
-            ListCacheVersionKey,
-            initialVersion.ToString(CultureInfo.InvariantCulture),
-            CacheOptions,
-            cancellationToken);
-
-        return initialVersion;
     }
 
-    private async Task InvalidateListCacheAsync(CancellationToken cancellationToken)
+    private static string GetDepartmentCacheKey(Guid id)
     {
-        // IDistributedCache does not support wildcard removal, so list cache entries are versioned.
-        var currentVersion = await GetListCacheVersionAsync(cancellationToken);
-        var nextVersion = currentVersion + 1;
-
-        await _cache.SetStringAsync(
-            ListCacheVersionKey,
-            nextVersion.ToString(CultureInfo.InvariantCulture),
-            CacheOptions,
-            cancellationToken);
+        return $"{DepartmentCacheKeyPrefix}{id}";
     }
 }
