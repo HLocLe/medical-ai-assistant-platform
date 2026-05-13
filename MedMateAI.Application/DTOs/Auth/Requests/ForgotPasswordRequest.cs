@@ -1,7 +1,6 @@
-namespace MedMateAI.Application.DTOs.Request;
+namespace MedMateAI.Application.DTOs.Auth.Requests;
 
 public sealed class ForgotPasswordRequest
 {
     public string Email { get; set; } = string.Empty;
 }
-

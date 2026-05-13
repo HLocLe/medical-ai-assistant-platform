@@ -1,6 +1,6 @@
 using MedMateAI.Domain.Enums;
 
-namespace MedMateAI.Application.DTOs.Request;
+namespace MedMateAI.Application.DTOs.Users.Requests;
 
 public sealed class UpdateUserRequest
 {

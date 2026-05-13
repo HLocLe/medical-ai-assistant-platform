@@ -1,6 +1,6 @@
 using System.Text.Json;
-using MedMateAI.Application.DTOs.Request;
-using MedMateAI.Application.DTOs.Response;
+using MedMateAI.Application.DTOs.MedicalDepartments.Requests;
+using MedMateAI.Application.DTOs.MedicalDepartments.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Persistence;

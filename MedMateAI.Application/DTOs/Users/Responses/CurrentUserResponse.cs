@@ -1,6 +1,6 @@
 using MedMateAI.Domain.Enums;
 
-namespace MedMateAI.Application.DTOs.Response;
+namespace MedMateAI.Application.DTOs.Users.Responses;
 
 public sealed class CurrentUserResponse
 {

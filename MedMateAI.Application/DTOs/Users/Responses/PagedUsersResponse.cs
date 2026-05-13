@@ -1,6 +1,6 @@
 using MedMateAI.Domain.Entities;
 
-namespace MedMateAI.Application.DTOs.Response;
+namespace MedMateAI.Application.DTOs.Users.Responses;
 
 public sealed class PagedUsersResponse
 {

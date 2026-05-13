@@ -1,6 +1,6 @@
-using MedMateAI.Application.DTOs;
-using MedMateAI.Application.DTOs.Request;
-using MedMateAI.Application.DTOs.Response;
+using MedMateAI.Application.DTOs.Auth.Requests;
+using MedMateAI.Application.DTOs.Auth.Responses;
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.IService;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
