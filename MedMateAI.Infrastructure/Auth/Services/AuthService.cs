@@ -65,6 +65,7 @@ public sealed class AuthService : IAuthService
             Gender = request.Gender,
             DateOfBirth = request.DateOfBirth,
             Status = UserStatus.Confirmed,
+            IsFirstLogin = true,
         };
 
         var identityResult = await _userManager.CreateAsync(user, request.Password);
@@ -86,6 +87,7 @@ public sealed class AuthService : IAuthService
             Email = user.Email ?? string.Empty,
             UserId = user.Id,
             ExpiresAtUtc = default,
+            FirstLogin = true,
         });
     }
     //
@@ -109,6 +111,7 @@ public sealed class AuthService : IAuthService
             Status = UserStatus.Pending,
             Gender = request.Gender,
             DateOfBirth = request.DateOfBirth,
+            IsFirstLogin = true,
         };
 
         var identityResult = await _userManager.CreateAsync(user, request.Password);
@@ -130,6 +133,7 @@ public sealed class AuthService : IAuthService
             Email = user.Email ?? string.Empty,
             UserId = user.Id,
             ExpiresAtUtc = default,
+            FirstLogin = true,
         });
     }
 
@@ -219,6 +223,7 @@ public sealed class AuthService : IAuthService
                 EmailConfirmed = true,
                 DisplayName = payload.Name,
                 Status = UserStatus.Confirmed,
+                IsFirstLogin = true,
             };
 
             var createResult = await _userManager.CreateAsync(user);
@@ -326,6 +331,7 @@ public sealed class AuthService : IAuthService
             Email = user.Email ?? string.Empty,
             UserId = user.Id,
             ExpiresAtUtc = accessExpires,
+            FirstLogin = user.IsFirstLogin,
         });
     }
 
@@ -342,6 +348,13 @@ public sealed class AuthService : IAuthService
 
             if (existing is not null)
             {
+                var user = await _db.Set<ApplicationUser>()
+                    .FirstOrDefaultAsync(u => u.Id == existing.UserId, cancellationToken);
+                if (user is not null && user.IsFirstLogin)
+                {
+                    user.IsFirstLogin = false;
+                }
+
                 existing.IsRevoked = true;
                 existing.ExpiresAt = DateTimeOffset.UtcNow.AddDays(-1).UtcDateTime;
                 await _db.SaveChangesAsync(cancellationToken);
@@ -504,6 +517,8 @@ public sealed class AuthService : IAuthService
             UserId = user.Id,
             Roles = roles.ToArray(),
             ExpiresAtUtc = expires,
+            FirstLogin = user.IsFirstLogin,
+            IsProfileCompleted=user.IsProfileCompleted,
         };
     }
 

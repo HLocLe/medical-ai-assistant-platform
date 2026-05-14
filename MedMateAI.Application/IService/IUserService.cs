@@ -1,16 +1,16 @@
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Users.Requests;
-using MedMateAI.Domain.Entities;
+using MedMateAI.Application.DTOs.Users.Responses;
 
 namespace MedMateAI.Application.IService;
 
 public interface IUserService
 {
-    Task<User?> GetCurrentUserAsync(CancellationToken cancellationToken = default);
+    Task<ApplicationUserResponse?> GetCurrentUserAsync(CancellationToken cancellationToken = default);
 
-    Task<User?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<ApplicationUserResponse?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default);
 
-    Task<User?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default);
+    Task<ApplicationUserResponse?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default);
 
     Task<bool> UserExistsAsync(string email, CancellationToken cancellationToken = default);
 
@@ -18,7 +18,7 @@ public interface IUserService
 
     Task<IReadOnlyList<string>> GetRolesAsync(Guid userId, CancellationToken cancellationToken = default);
 
-    Task<PagedResponse<User>> ListUsersAsync(
+    Task<PagedResponse<ApplicationUserResponse>> ListUsersAsync(
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default);
@@ -33,6 +33,10 @@ public interface IUserService
         CancellationToken cancellationToken = default);
 
     Task<(bool Succeeded, IEnumerable<string> Errors)> ApproveUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task<(bool Succeeded, IEnumerable<string> Errors)> MarkPatientProfileCompletedAsync(
         Guid userId,
         CancellationToken cancellationToken = default);
 }

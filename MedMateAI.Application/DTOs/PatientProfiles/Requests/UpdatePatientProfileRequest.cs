@@ -1,9 +1,7 @@
-namespace MedMateAI.Domain.Entities;
+namespace MedMateAI.Application.DTOs.PatientProfiles.Requests;
 
-public sealed class PatientProfile : BaseEntity
+public sealed class UpdatePatientProfileRequest
 {
-    public Guid UserId { get; set; }
-
     public string? BloodType { get; set; }
 
     public double? Height { get; set; }

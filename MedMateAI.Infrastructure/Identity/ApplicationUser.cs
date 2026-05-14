@@ -46,7 +46,13 @@ public class ApplicationUser : IdentityUser<Guid>
 
     public bool IsDeleted { get; set; }
 
+    public DateTime? DeletedAt { get; set; }
+
     public Gender? Gender { get; set; }
 
     public DateOnly? DateOfBirth { get; set; }
+
+    public bool IsFirstLogin { get; set; }
+
+    public bool IsProfileCompleted { get; set; }
 }

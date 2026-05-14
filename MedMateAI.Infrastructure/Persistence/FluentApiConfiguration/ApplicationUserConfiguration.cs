@@ -16,10 +16,19 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
             .HasMaxLength(512);
 
         builder.Property(x => x.Status)
-            .HasConversion<int>()
-            .HasDefaultValue(UserStatus.Confirmed);
+            .HasConversion<int>();
+            
 
         builder.Property(x => x.IsDeleted)
+            .HasDefaultValue(false);
+
+        builder.Property(x => x.IsFirstLogin)
+            .HasDefaultValue(false);
+
+             builder.Property(x => x.DeletedAt)
+            .HasColumnType("timestamp with time zone");
+      
+        builder.Property(x => x.IsProfileCompleted)
             .HasDefaultValue(false);
     }
 }

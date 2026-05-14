@@ -8,10 +8,12 @@ namespace MedMateAI.Infrastructure.Repositories;
 public class GenericRepository<TEntity> : IGenericRepository<TEntity>
     where TEntity : class
 {
+    private readonly ApplicationDbContext _context;
     private readonly DbSet<TEntity> _set;
 
     public GenericRepository(ApplicationDbContext context)
     {
+        _context = context;
         _set = context.Set<TEntity>();
     }
 
@@ -75,10 +77,26 @@ public class GenericRepository<TEntity> : IGenericRepository<TEntity>
         };
     }
 
+    public async Task<TEntity?> FirstOrDefaultAsync(
+        Expression<Func<TEntity, bool>> predicate,
+        bool asNoTracking = true,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<TEntity> query = _set;
+        if (asNoTracking)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.FirstOrDefaultAsync(predicate, cancellationToken);
+    }
+
     public void Add(TEntity entity) => _set.Add(entity);
 
     public void Update(TEntity entity) => _set.Update(entity);
 
     public void Remove(TEntity entity) => _set.Remove(entity);
+
+  
 }
 

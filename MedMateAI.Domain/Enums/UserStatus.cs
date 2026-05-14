@@ -8,9 +8,9 @@ namespace MedMateAI.Domain.Enums
 {
     public enum UserStatus
     {
+
+        Pending =0,
+        Confirmed=1
         
-        Pending,
-        Confirmed
-       
     }
 }

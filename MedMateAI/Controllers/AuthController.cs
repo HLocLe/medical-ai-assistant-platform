@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Auth.Requests;
 using MedMateAI.Application.DTOs.Auth.Responses;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.IService;
+using MedMateAI.Infrastructure.Auth.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,9 +14,12 @@ public sealed class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
 
-    public AuthController(IAuthService authService)
+    private readonly IUserService _userService;
+
+    public AuthController(IAuthService authService, IUserService userService)
     {
         _authService = authService;
+        _userService = userService;
     }
 
     [HttpPost("register")]
@@ -210,6 +214,30 @@ public sealed class AuthController : ControllerBase
         {
             Success = true,
             Message = "Password changed successfully.",
+        });
+    }
+
+    [HttpPost("{userId}/approve-staff")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Approve(Guid userId, CancellationToken cancellationToken)
+    {
+        var (ok, errors) = await _userService.ApproveUserAsync(userId, cancellationToken);
+        if (!ok)
+        {
+            return BadRequest(new ApiResponse
+            {
+                Success = false,
+                Message = "Approve user failed.",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse
+        {
+            Success = true,
+            Message = "User approved.",
         });
     }
 }

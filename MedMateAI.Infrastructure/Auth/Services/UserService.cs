@@ -3,9 +3,10 @@ using AutoMapper;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Users.Requests;
 using MedMateAI.Application.IService;
-using MedMateAI.Domain.Entities;
+using MedMateAI.Application.DTOs.Users.Responses;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Repository;
+using MedMateAI.Infrastructure;
 using MedMateAI.Infrastructure.Identity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -19,31 +20,43 @@ public sealed class UserService : IUserService
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IGenericRepository<ApplicationUser> _userRepository;
     private readonly IMapper _mapper;
+    private readonly ApplicationDbContext _db;
 
     public UserService(
         IHttpContextAccessor httpContextAccessor,
         UserManager<ApplicationUser> userManager,
         IGenericRepository<ApplicationUser> userRepository,
-        IMapper mapper)
+        IMapper mapper,
+        ApplicationDbContext db)
     {
         _httpContextAccessor = httpContextAccessor;
         _userManager = userManager;
         _userRepository = userRepository;
         _mapper = mapper;
+        _db = db;
     }
 
-    public async Task<User?> GetCurrentUserAsync(CancellationToken cancellationToken = default)
+    public async Task<ApplicationUserResponse?> GetCurrentUserAsync(CancellationToken cancellationToken = default)
     {
         var value = _httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(value, out var id))
+        if (!Guid.TryParse(value, out var id) || id == Guid.Empty)
         {
             return null;
         }
 
-        return await GetUserByIdAsync(id, cancellationToken);
+        var appUser = await _userManager.FindByIdAsync(id.ToString());
+        if (appUser is null || appUser.IsDeleted)
+        {
+            return null;
+        }
+
+        var dto = _mapper.Map<ApplicationUserResponse>(appUser);
+        var roles = await _userManager.GetRolesAsync(appUser);
+        dto.Roles = roles.ToArray();
+        return dto;
     }
 
-    public async Task<User?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<ApplicationUserResponse?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty)
         {
@@ -56,10 +69,10 @@ public sealed class UserService : IUserService
             return null;
         }
 
-        return _mapper.Map<User>(appUser);
+        return _mapper.Map<ApplicationUserResponse>(appUser);
     }
 
-    public async Task<User?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default)
+    public async Task<ApplicationUserResponse?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -71,7 +84,7 @@ public sealed class UserService : IUserService
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.NormalizedEmail == normalized && !u.IsDeleted, cancellationToken);
 
-        return appUser is null ? null : _mapper.Map<User>(appUser);
+        return appUser is null ? null : _mapper.Map<ApplicationUserResponse>(appUser);
     }
 
     public async Task<bool> UserExistsAsync(string email, CancellationToken cancellationToken = default)
@@ -110,7 +123,7 @@ public sealed class UserService : IUserService
         return roles.ToArray();
     }
 
-    public async Task<PagedResponse<User>> ListUsersAsync(
+    public async Task<PagedResponse<ApplicationUserResponse>> ListUsersAsync(
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default)
@@ -122,13 +135,23 @@ public sealed class UserService : IUserService
             q => q.OrderBy(u => u.Email),
             cancellationToken: cancellationToken);
 
-        return new PagedResponse<User>
+        var rolesByUserId = await GetRoleNamesByUserIdsAsync(paged.Items, cancellationToken);
+
+        var items = new List<ApplicationUserResponse>(paged.Items.Count);
+        foreach (var u in paged.Items)
+        {
+            var dto = _mapper.Map<ApplicationUserResponse>(u);
+            dto.Roles = rolesByUserId.TryGetValue(u.Id, out var names) ? names : Array.Empty<string>();
+            items.Add(dto);
+        }
+
+        return new PagedResponse<ApplicationUserResponse>
         {
             PageNumber = paged.PageNumber,
             PageSize = paged.PageSize,
             TotalCount = paged.TotalCount,
             TotalPages = paged.TotalPages,
-            Items = paged.Items.Select(u => _mapper.Map<User>(u)).ToList(),
+            Items = items,
         };
     }
 
@@ -200,7 +223,7 @@ public sealed class UserService : IUserService
         }
 
         user.IsDeleted = true;
-    
+        user.DeletedAt = DateTime.UtcNow;
 
         var updateResult = await _userManager.UpdateAsync(user);
         return updateResult.Succeeded
@@ -238,5 +261,62 @@ public sealed class UserService : IUserService
         return updateResult.Succeeded
             ? (true, Array.Empty<string>())
             : (false, updateResult.Errors.Select(e => e.Description));
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> MarkPatientProfileCompletedAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return (false, new[] { " user id is required" });
+        }
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null || user.IsDeleted)
+        {
+            return (false, new[] { "User not found." });
+        }
+
+        if (user.IsProfileCompleted)
+        {
+            return (true, Array.Empty<string>());
+        }
+
+        user.IsProfileCompleted = true;
+        
+        var updateResult = await _userManager.UpdateAsync(user);
+        return updateResult.Succeeded
+            ? (true, Array.Empty<string>())
+            : (false, updateResult.Errors.Select(e => e.Description));
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, IReadOnlyList<string>>> GetRoleNamesByUserIdsAsync(
+        IReadOnlyList<ApplicationUser> users,
+        CancellationToken cancellationToken)
+    {
+        if (users.Count == 0)
+        {
+            return new Dictionary<Guid, IReadOnlyList<string>>();
+        }
+
+        var userIds = users.Select(u => u.Id).Distinct().ToList();
+
+        var rows = await (
+            from ur in _db.UserRoles.AsNoTracking()
+            join r in _db.Roles.AsNoTracking() on ur.RoleId equals r.Id
+            where userIds.Contains(ur.UserId)
+            select new { ur.UserId, r.Name }
+        ).ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(x => x.UserId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<string>)g
+                    .Select(x => x.Name)
+                    .Where(n => !string.IsNullOrEmpty(n))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray());
     }
 }

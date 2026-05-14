@@ -180,7 +180,8 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
         }
 
         entity.IsDeleted = true;
-        entity.UpdatedAt = DateTime.UtcNow;
+        entity.DeletedAt = DateTime.UtcNow;
+       
 
         _medicalDepartmentRepository.Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);

@@ -2,7 +2,6 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Users.Requests;
 using MedMateAI.Application.DTOs.Users.Responses;
 using MedMateAI.Application.IService;
-using MedMateAI.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,32 +20,21 @@ public sealed class UsersController : ControllerBase
     }
 
     [HttpGet("me")]
-    [ProducesResponseType(typeof(ApiResponse<CurrentUserResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse<CurrentUserResponse>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<ApplicationUserResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<ApplicationUserResponse>), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetCurrent(CancellationToken cancellationToken)
     {
-        var current = await _userService.GetCurrentUserAsync(cancellationToken);
-        if (current is null)
+        var data = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (data is null)
         {
-            return Unauthorized(new ApiResponse<CurrentUserResponse>
+            return Unauthorized(new ApiResponse<ApplicationUserResponse>
             {
                 Success = false,
                 Message = "Unauthorized",
             });
         }
 
-        var roles = await _userService.GetRolesAsync(current.IdentityId, cancellationToken);
-
-        var data = new CurrentUserResponse
-        {
-            UserId = current.IdentityId,
-            Email = current.Email,
-            Name = current.DisplayName,
-            Status = current.Status,
-            Roles = roles,
-        };
-
-        return Ok(new ApiResponse<CurrentUserResponse>
+        return Ok(new ApiResponse<ApplicationUserResponse>
         {
             Success = true,
             Message = "OK",
@@ -57,13 +45,13 @@ public sealed class UsersController : ControllerBase
     
     [HttpGet]
     [AllowAnonymous]
-    [ProducesResponseType(typeof(ApiResponse<PagedResponse<User>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<ApplicationUserResponse>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
         [FromQuery] PaginationQuery query,
         CancellationToken cancellationToken = default)
     {
         var data = await _userService.ListUsersAsync(query.PageNumber, query.PageSize, cancellationToken);
-        return Ok(new ApiResponse<PagedResponse<User>>
+        return Ok(new ApiResponse<PagedResponse<ApplicationUserResponse>>
         {
             Success = true,
             Message = "OK",

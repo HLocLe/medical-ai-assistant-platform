@@ -7,5 +7,10 @@ public class AuthResponse
     public Guid UserId { get; set; }
 
     public IEnumerable<string> Roles { get; set; } = Array.Empty<string>();
+    
     public DateTimeOffset ExpiresAtUtc { get; set; }
+
+    public bool FirstLogin { get; set; }
+
+    public bool IsProfileCompleted { get; set; }
 }

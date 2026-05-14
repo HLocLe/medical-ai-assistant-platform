@@ -8,6 +8,7 @@ using MedMateAI.Domain.Repository;
 using MedMateAI.Infrastructure.Auth.Options;
 using MedMateAI.Infrastructure.Auth.Providers;
 using MedMateAI.Infrastructure.Auth.Services;
+using MedMateAI.Application.Mapping;
 using MedMateAI.Infrastructure.Mapping;
 using MedMateAI.Infrastructure.Persistence.Seeder;
 using MedMateAI.Infrastructure.Repositories;
@@ -43,6 +44,8 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IMedicalDepartmentService, MedicalDepartmentService>();
+        services.AddScoped<IPatientProfileService, PatientProfileService>();
+      
         
         //
         services.AddHttpContextAccessor();
@@ -90,7 +93,7 @@ public static class DependencyInjection
            "JWT secret must be at least 32 chars.")
          .ValidateOnStart();
         
-        services.AddAutoMapper(cfg => { },typeof(UserMappingProfile));
+        services.AddAutoMapper(cfg => { }, typeof(UserMappingProfile), typeof(PatientProfileMappingProfile));
 
         services.AddAuthentication(options =>
             {

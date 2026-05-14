@@ -18,9 +18,16 @@ public interface IGenericRepository<TEntity>
         bool asNoTracking = true,
         CancellationToken cancellationToken = default);
 
+    Task<TEntity?> FirstOrDefaultAsync(
+        Expression<Func<TEntity, bool>> predicate,
+        bool asNoTracking = true,
+        CancellationToken cancellationToken = default);
+
     void Add(TEntity entity);
 
     void Update(TEntity entity);
 
     void Remove(TEntity entity);
+
+   
 }
