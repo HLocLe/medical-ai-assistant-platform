@@ -1,0 +1,66 @@
+using MedMateAI.Application.DTOs.Common;
+using MedMateAI.Application.DTOs.WebChatbot.Requests;
+using MedMateAI.Application.DTOs.WebChatbot.Responses;
+using MedMateAI.Application.IService;
+using Microsoft.AspNetCore.Mvc;
+
+namespace MedMateAI.Controllers;
+
+[ApiController]
+[Route("api/web-chatbot")]
+public sealed class WebChatbotController : ControllerBase
+{
+    private readonly IWebChatbotService _webChatbotService;
+
+    public WebChatbotController(IWebChatbotService webChatbotService)
+    {
+        _webChatbotService = webChatbotService;
+    }
+
+    [HttpPost("message")]
+    [ProducesResponseType(typeof(ApiResponse<WebChatbotResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<WebChatbotResponse>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SendMessage(
+        [FromBody] WebChatbotRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.Message))
+        {
+            return BadRequest(new ApiResponse<WebChatbotResponse>
+            {
+                Success = false,
+                Message = "Send message failed.",
+                Errors = new List<string> { "Message is required." },
+            });
+        }
+
+        try
+        {
+            var data = await _webChatbotService.SendMessageAsync(request, cancellationToken);
+            return Ok(new ApiResponse<WebChatbotResponse>
+            {
+                Success = true,
+                Message = "OK",
+                Data = data,
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiResponse<WebChatbotResponse>
+            {
+                Success = false,
+                Message = "Send message failed.",
+                Errors = new List<string> { ex.Message },
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiResponse<WebChatbotResponse>
+            {
+                Success = false,
+                Message = "Web chatbot is unavailable.",
+                Errors = new List<string> { ex.Message },
+            });
+        }
+    }
+}

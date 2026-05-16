@@ -13,6 +13,7 @@ using MedMateAI.Infrastructure.Mapping;
 using MedMateAI.Infrastructure.Persistence.Seeder;
 using MedMateAI.Infrastructure.Repositories;
 using MedMateAI.Infrastructure.Email.Brevo;
+using MedMateAI.Infrastructure.AI;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -47,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IPatientProfileService, PatientProfileService>();
         services.AddScoped<ISubscriptionPlanService, SubscriptionPlanService>();
         services.AddScoped<IAIConfigService, AIConfigService>();
+        services.AddScoped<IWebChatbotService, WebChatbotService>();
       
         
         //
@@ -65,6 +67,7 @@ public static class DependencyInjection
             client.BaseAddress = new Uri("https://api.brevo.com/");
             client.Timeout = TimeSpan.FromSeconds(30);
         });
+        services.AddHttpClient<IAIChatProvider, OpenRouterChatProvider>();
 
         // 
         services.AddIdentityCore<ApplicationUser>(options =>
