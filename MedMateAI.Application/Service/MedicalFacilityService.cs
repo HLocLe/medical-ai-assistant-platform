@@ -5,7 +5,6 @@ using MedMateAI.Application.DTOs.MedicalFacilities.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Persistence;
-using MedMateAI.Domain.Repository;
 using Microsoft.Extensions.Caching.Distributed;
 
 namespace MedMateAI.Application.Service;
@@ -21,19 +20,13 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         AbsoluteExpirationRelativeToNow = CacheTtl,
     };
 
-    private readonly IGenericRepository<MedicalDepartment> _medicalDepartmentRepository;
-    private readonly IGenericRepository<FacilityDepartment> _facilityDepartmentRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDistributedCache _cache;
 
     public MedicalFacilityService(
-        IGenericRepository<MedicalDepartment> medicalDepartmentRepository,
-        IGenericRepository<FacilityDepartment> facilityDepartmentRepository,
         IUnitOfWork unitOfWork,
         IDistributedCache cache)
     {
-        _medicalDepartmentRepository = medicalDepartmentRepository;
-        _facilityDepartmentRepository = facilityDepartmentRepository;
         _unitOfWork = unitOfWork;
         _cache = cache;
     }
@@ -219,7 +212,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
 
         foreach (var departmentId in distinctDepartmentIds)
         {
-            _facilityDepartmentRepository.Add(new FacilityDepartment
+            _unitOfWork.FacilityDepartments.Add(new FacilityDepartment
             {
                 Id = Guid.NewGuid(),
                 FacilityId = entity.Id,
@@ -456,7 +449,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             facilityDepartment.IsDeleted = true;
             facilityDepartment.DeletedAt = utcNow;
             facilityDepartment.UpdatedAt = utcNow;
-            _facilityDepartmentRepository.Update(facilityDepartment);
+            _unitOfWork.FacilityDepartments.Update(facilityDepartment);
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -489,7 +482,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
                     current.IsDeleted = false;
                     current.DeletedAt = null;
                     current.UpdatedAt = utcNow;
-                    _facilityDepartmentRepository.Update(current);
+                    _unitOfWork.FacilityDepartments.Update(current);
                 }
 
                 requestedDepartmentIds.Remove(current.DepartmentId);
@@ -501,13 +494,13 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
                 current.IsDeleted = true;
                 current.DeletedAt = utcNow;
                 current.UpdatedAt = utcNow;
-                _facilityDepartmentRepository.Update(current);
+                _unitOfWork.FacilityDepartments.Update(current);
             }
         }
 
         foreach (var departmentId in requestedDepartmentIds)
         {
-            _facilityDepartmentRepository.Add(new FacilityDepartment
+            _unitOfWork.FacilityDepartments.Add(new FacilityDepartment
             {
                 Id = Guid.NewGuid(),
                 FacilityId = facilityId,
@@ -526,7 +519,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             return new List<Guid>();
         }
 
-        var allDepartments = await _medicalDepartmentRepository.GetAllAsync(cancellationToken);
+        var allDepartments = await _unitOfWork.MedicalDepartments.GetAllAsync(cancellationToken);
         var activeDepartmentIds = allDepartments
             .Where(x => !x.IsDeleted)
             .Select(x => x.Id)
