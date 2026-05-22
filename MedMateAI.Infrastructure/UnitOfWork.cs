@@ -1,3 +1,4 @@
+using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Persistence;
 using MedMateAI.Domain.Repository;
 using MedMateAI.Infrastructure.Repositories;
@@ -9,6 +10,8 @@ public sealed class UnitOfWork : IUnitOfWork
 {
     private readonly ApplicationDbContext _context;
     private IMedicalFacilityRepository? _medicalFacilities;
+    private IGenericRepository<MedicalDepartment>? _medicalDepartments;
+    private IGenericRepository<FacilityDepartment>? _facilityDepartments;
     private IDbContextTransaction? _transaction;
 
     public UnitOfWork(ApplicationDbContext context)
@@ -18,6 +21,12 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IMedicalFacilityRepository MedicalFacilities =>
         _medicalFacilities ??= new MedicalFacilityRepository(_context);
+
+    public IGenericRepository<MedicalDepartment> MedicalDepartments =>
+        _medicalDepartments ??= new GenericRepository<MedicalDepartment>(_context);
+
+    public IGenericRepository<FacilityDepartment> FacilityDepartments =>
+        _facilityDepartments ??= new GenericRepository<FacilityDepartment>(_context);
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
