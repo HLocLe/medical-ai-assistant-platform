@@ -1,5 +1,6 @@
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Repository;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,6 +23,7 @@ public sealed class DoctorRepository : GenericRepository<Doctor>, IDoctorReposit
         Guid? facilityId = null,
         Guid? departmentId = null,
         bool? isActive = null,
+        DepartmentRole? departmentRole = null,
         CancellationToken cancellationToken = default)
     {
         var normalizedPageNumber = pageNumber < 1 ? 1 : pageNumber;
@@ -29,7 +31,7 @@ public sealed class DoctorRepository : GenericRepository<Doctor>, IDoctorReposit
         normalizedPageSize = normalizedPageSize > 100 ? 100 : normalizedPageSize;
 
         var query = BuildDetailsQuery(onlyActive: false);
-        query = ApplyFacilityDepartmentFilters(query, facilityId, departmentId, isActive);
+        query = ApplyFacilityDepartmentFilters(query, facilityId, departmentId, isActive, departmentRole);
         query = ApplySearch(query, search);
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -59,10 +61,11 @@ public sealed class DoctorRepository : GenericRepository<Doctor>, IDoctorReposit
         Guid? facilityId = null,
         Guid? departmentId = null,
         string? search = null,
+        DepartmentRole? departmentRole = null,
         CancellationToken cancellationToken = default)
     {
         var query = BuildDetailsQuery(onlyActive: true);
-        query = ApplyFacilityDepartmentFilters(query, facilityId, departmentId);
+        query = ApplyFacilityDepartmentFilters(query, facilityId, departmentId, departmentRole: departmentRole);
         query = ApplySearch(query, search);
 
         return await query
@@ -111,7 +114,8 @@ public sealed class DoctorRepository : GenericRepository<Doctor>, IDoctorReposit
         IQueryable<Doctor> query,
         Guid? facilityId = null,
         Guid? departmentId = null,
-        bool? isActive = null)
+        bool? isActive = null,
+        DepartmentRole? departmentRole = null)
     {
         if (facilityId.HasValue && facilityId.Value != Guid.Empty)
         {
@@ -128,6 +132,11 @@ public sealed class DoctorRepository : GenericRepository<Doctor>, IDoctorReposit
             query = query.Where(x => x.IsActive == isActive.Value);
         }
 
+        if (departmentRole.HasValue)
+        {
+            query = query.Where(x => x.DepartmentRole == departmentRole.Value);
+        }
+
         return query;
     }
 
@@ -139,9 +148,20 @@ public sealed class DoctorRepository : GenericRepository<Doctor>, IDoctorReposit
         }
 
         var normalizedSearch = search.Trim().ToLower();
+        var matchStaff = DepartmentRole.Staff.ToString().ToLower().Contains(normalizedSearch);
+        var matchDeputyHead = DepartmentRole.DeputyHead.ToString().ToLower().Contains(normalizedSearch);
+        var matchHead = DepartmentRole.Head.ToString().ToLower().Contains(normalizedSearch);
+        var matchLeadingExpert = DepartmentRole.LeadingExpert.ToString().ToLower().Contains(normalizedSearch);
+        var matchConsultant = DepartmentRole.Consultant.ToString().ToLower().Contains(normalizedSearch);
+
         return query.Where(x =>
             (x.FullName ?? string.Empty).ToLower().Contains(normalizedSearch)
             || (x.Specialty ?? string.Empty).ToLower().Contains(normalizedSearch)
-            || (x.AcademicTitle ?? string.Empty).ToLower().Contains(normalizedSearch));
+            || (x.AcademicTitle ?? string.Empty).ToLower().Contains(normalizedSearch)
+            || (matchStaff && x.DepartmentRole == DepartmentRole.Staff)
+            || (matchDeputyHead && x.DepartmentRole == DepartmentRole.DeputyHead)
+            || (matchHead && x.DepartmentRole == DepartmentRole.Head)
+            || (matchLeadingExpert && x.DepartmentRole == DepartmentRole.LeadingExpert)
+            || (matchConsultant && x.DepartmentRole == DepartmentRole.Consultant));
     }
 }

@@ -1,3 +1,5 @@
+using MedMateAI.Domain.Enums;
+
 namespace MedMateAI.Application.DTOs.Doctors.Requests;
 
 public sealed class UpdateDoctorRequest
@@ -9,6 +11,8 @@ public sealed class UpdateDoctorRequest
     public string? Specialty { get; set; }
 
     public string? AcademicTitle { get; set; }
+
+    public DepartmentRole? DepartmentRole { get; set; }
 
     public int? YearsOfExperience { get; set; }
 

@@ -4,6 +4,7 @@ using MedMateAI.Application.DTOs.Doctors.Requests;
 using MedMateAI.Application.DTOs.Doctors.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Persistence;
 using Microsoft.Extensions.Caching.Distributed;
 
@@ -38,6 +39,7 @@ public sealed class DoctorService : IDoctorService
         Guid? facilityId = null,
         Guid? departmentId = null,
         bool? isActive = null,
+        DepartmentRole? departmentRole = null,
         CancellationToken cancellationToken = default)
     {
         var paged = await _unitOfWork.Doctors.GetPagedWithDetailsAsync(
@@ -47,6 +49,7 @@ public sealed class DoctorService : IDoctorService
             facilityId,
             departmentId,
             isActive,
+            departmentRole,
             cancellationToken);
 
         return new PagedResponse<DoctorResponse>
@@ -63,11 +66,13 @@ public sealed class DoctorService : IDoctorService
         Guid? facilityId = null,
         Guid? departmentId = null,
         string? search = null,
+        DepartmentRole? departmentRole = null,
         CancellationToken cancellationToken = default)
     {
         var shouldUseCache =
             !facilityId.HasValue
             && !departmentId.HasValue
+            && !departmentRole.HasValue
             && string.IsNullOrWhiteSpace(search);
 
         if (shouldUseCache)
@@ -87,6 +92,7 @@ public sealed class DoctorService : IDoctorService
             facilityId,
             departmentId,
             search,
+            departmentRole,
             cancellationToken);
 
         var response = entities.Select(MapToResponse).ToList();
@@ -166,6 +172,11 @@ public sealed class DoctorService : IDoctorService
             errors.Add("YearsOfExperience must be greater than or equal to 0.");
         }
 
+        if (!IsValidDepartmentRole(request.DepartmentRole))
+        {
+            errors.Add("DepartmentRole is invalid.");
+        }
+
         if (errors.Count == 0)
         {
             var isValidFacilityDepartment = await IsValidFacilityDepartmentAsync(
@@ -204,6 +215,7 @@ public sealed class DoctorService : IDoctorService
             FullName = fullName,
             Specialty = NormalizeText(request.Specialty),
             AcademicTitle = NormalizeText(request.AcademicTitle),
+            DepartmentRole = request.DepartmentRole,
             YearsOfExperience = request.YearsOfExperience,
             IsActive = request.IsActive,
             CreatedAt = DateTime.UtcNow,
@@ -253,6 +265,11 @@ public sealed class DoctorService : IDoctorService
         if (request.YearsOfExperience.HasValue && request.YearsOfExperience.Value < 0)
         {
             errors.Add("YearsOfExperience must be greater than or equal to 0.");
+        }
+
+        if (request.DepartmentRole.HasValue && !IsValidDepartmentRole(request.DepartmentRole.Value))
+        {
+            errors.Add("DepartmentRole is invalid.");
         }
 
         var finalFacilityDepartmentId = entity.FacilityDepartmentId;
@@ -323,6 +340,11 @@ public sealed class DoctorService : IDoctorService
         if (request.AcademicTitle is not null)
         {
             entity.AcademicTitle = NormalizeText(request.AcademicTitle);
+        }
+
+        if (request.DepartmentRole.HasValue)
+        {
+            entity.DepartmentRole = request.DepartmentRole.Value;
         }
 
         if (request.YearsOfExperience.HasValue)
@@ -464,6 +486,8 @@ public sealed class DoctorService : IDoctorService
             FullName = entity.FullName ?? string.Empty,
             Specialty = entity.Specialty,
             AcademicTitle = entity.AcademicTitle,
+            DepartmentRole = entity.DepartmentRole,
+            DepartmentRoleName = entity.DepartmentRole.ToString(),
             YearsOfExperience = entity.YearsOfExperience,
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAt,
@@ -482,6 +506,11 @@ public sealed class DoctorService : IDoctorService
         return string.IsNullOrWhiteSpace(value)
             ? null
             : value.Trim();
+    }
+
+    private static bool IsValidDepartmentRole(DepartmentRole role)
+    {
+        return Enum.IsDefined(typeof(DepartmentRole), role);
     }
 
     private static string GetDoctorCacheKey(Guid id)

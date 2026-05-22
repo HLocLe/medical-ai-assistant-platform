@@ -1,3 +1,5 @@
+using MedMateAI.Domain.Enums;
+
 namespace MedMateAI.Application.DTOs.Doctors.Responses;
 
 public sealed class DoctorResponse
@@ -19,6 +21,10 @@ public sealed class DoctorResponse
     public string? Specialty { get; set; }
 
     public string? AcademicTitle { get; set; }
+
+    public DepartmentRole DepartmentRole { get; set; }
+
+    public string DepartmentRoleName { get; set; } = string.Empty;
 
     public int? YearsOfExperience { get; set; }
 

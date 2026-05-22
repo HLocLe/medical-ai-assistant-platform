@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Doctors.Requests;
 using MedMateAI.Application.DTOs.Doctors.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -26,6 +27,7 @@ public sealed class DoctorsController : ControllerBase
         [FromQuery] Guid? facilityId,
         [FromQuery] Guid? departmentId,
         [FromQuery] bool? isActive,
+        [FromQuery] DepartmentRole? departmentRole,
         CancellationToken cancellationToken = default)
     {
         if (facilityId.HasValue && facilityId.Value == Guid.Empty)
@@ -53,6 +55,7 @@ public sealed class DoctorsController : ControllerBase
             facilityId,
             departmentId,
             isActive,
+            departmentRole,
             cancellationToken);
 
         return Ok(new ApiResponse<PagedResponse<DoctorResponse>>
@@ -70,6 +73,7 @@ public sealed class DoctorsController : ControllerBase
         [FromQuery] Guid? facilityId,
         [FromQuery] Guid? departmentId,
         [FromQuery] string? search,
+        [FromQuery] DepartmentRole? departmentRole,
         CancellationToken cancellationToken = default)
     {
         if (facilityId.HasValue && facilityId.Value == Guid.Empty)
@@ -94,6 +98,7 @@ public sealed class DoctorsController : ControllerBase
             facilityId,
             departmentId,
             search,
+            departmentRole,
             cancellationToken);
 
         return Ok(new ApiResponse<IReadOnlyList<DoctorResponse>>

@@ -1,5 +1,6 @@
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 
 namespace MedMateAI.Domain.Repository;
 
@@ -12,12 +13,14 @@ public interface IDoctorRepository : IGenericRepository<Doctor>
         Guid? facilityId = null,
         Guid? departmentId = null,
         bool? isActive = null,
+        DepartmentRole? departmentRole = null,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<Doctor>> GetActiveWithDetailsAsync(
         Guid? facilityId = null,
         Guid? departmentId = null,
         string? search = null,
+        DepartmentRole? departmentRole = null,
         CancellationToken cancellationToken = default);
 
     Task<Doctor?> GetByIdWithDetailsAsync(
