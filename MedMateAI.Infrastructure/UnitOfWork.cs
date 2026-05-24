@@ -9,6 +9,10 @@ public sealed class UnitOfWork : IUnitOfWork
 {
     private readonly ApplicationDbContext _context;
     private IMedicalFacilityRepository? _medicalFacilities;
+    private ISymptomAnalysisSessionRepository? _symptomAnalysisSessions;
+    private ISessionSymptomRepository? _sessionSymptoms;
+    private IDepartmentRecommendationRepository? _departmentRecommendations;
+    private IMedicalDepartmentRepository? _medicalDepartments;
     private IDbContextTransaction? _transaction;
 
     public UnitOfWork(ApplicationDbContext context)
@@ -18,6 +22,18 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IMedicalFacilityRepository MedicalFacilities =>
         _medicalFacilities ??= new MedicalFacilityRepository(_context);
+
+    public ISymptomAnalysisSessionRepository SymptomAnalysisSessions =>
+        _symptomAnalysisSessions ??= new SymptomAnalysisSessionRepository(_context);
+
+    public ISessionSymptomRepository SessionSymptoms =>
+        _sessionSymptoms ??= new SessionSymptomRepository(_context);
+
+    public IDepartmentRecommendationRepository DepartmentRecommendations =>
+        _departmentRecommendations ??= new DepartmentRecommendationRepository(_context);
+
+    public IMedicalDepartmentRepository MedicalDepartments =>
+        _medicalDepartments ??= new MedicalDepartmentRepository(_context);
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

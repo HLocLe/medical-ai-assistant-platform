@@ -1,3 +1,5 @@
+using MedMateAI.Domain.Enums;
+
 namespace MedMateAI.Domain.Entities;
 
 public sealed class SymptomAnalysisSession : BaseEntity
@@ -8,7 +10,7 @@ public sealed class SymptomAnalysisSession : BaseEntity
 
     public string? SeverityLevel { get; set; }
 
-    public string? Status { get; set; }
+    public SymptomAnalysisSessionStatus Status { get; set; } = SymptomAnalysisSessionStatus.Processing;
 
     public bool DisclaimerShown { get; set; }
 

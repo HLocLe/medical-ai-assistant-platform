@@ -112,6 +112,30 @@ public sealed class MedicalFacilityRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<FacilityDepartment>> GetActiveFacilityDepartmentsByDepartmentIdsAsync(
+        IReadOnlyList<Guid> departmentIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (departmentIds.Count == 0)
+        {
+            return Array.Empty<FacilityDepartment>();
+        }
+
+        return await _context.FacilityDepartments
+            .AsNoTracking()
+            .Where(fd =>
+                !fd.IsDeleted
+                && departmentIds.Contains(fd.DepartmentId)
+                && !fd.Facility.IsDeleted
+                && fd.Facility.IsActive
+                && !fd.Department.IsDeleted)
+            .Include(fd => fd.Facility)
+            .Include(fd => fd.Department)
+            .OrderBy(fd => fd.Department.DepartmentName)
+            .ThenBy(fd => fd.Facility.FacilityName)
+            .ToListAsync(cancellationToken);
+    }
+
     private static IQueryable<MedicalFacility> ApplySearch(IQueryable<MedicalFacility> query, string? search)
     {
         if (string.IsNullOrWhiteSpace(search))

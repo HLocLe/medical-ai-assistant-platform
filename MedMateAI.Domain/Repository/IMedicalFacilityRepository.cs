@@ -25,4 +25,8 @@ public interface IMedicalFacilityRepository
     Task<IReadOnlyList<FacilityDepartment>> GetFacilityDepartmentsAsync(
         Guid facilityId,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<FacilityDepartment>> GetActiveFacilityDepartmentsByDepartmentIdsAsync(
+        IReadOnlyList<Guid> departmentIds,
+        CancellationToken cancellationToken = default);
 }

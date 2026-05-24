@@ -316,14 +316,7 @@ public sealed class AuthService : IAuthService
         httpContext.Response.Cookies.Append(
             "refreshToken",
             newRefreshToken,
-            new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = httpContext.Request.IsHttps,
-                SameSite = SameSiteMode.Strict,
-                Expires = refreshExpires,
-                Path = "/",
-            });
+            CreateRefreshTokenCookieOptions(refreshExpires));
 
         return (true, new AuthResponse
         {
@@ -378,6 +371,7 @@ public sealed class AuthService : IAuthService
         }
 
         var email = request.Email.Trim();
+
         var cacheKey = GetPasswordResetCacheKey(email);
 
         var user = await _userManager.FindByEmailAsync(email);
@@ -503,8 +497,8 @@ public sealed class AuthService : IAuthService
                 new CookieOptions
                 {
                     HttpOnly = true,
-                    Secure = httpContext.Request.IsHttps,
-                    SameSite = SameSiteMode.Strict,
+                    Secure = true ,
+                    SameSite = SameSiteMode.None,
                     Expires = refreshExpires,
                     Path = "/",
                 });
@@ -522,20 +516,24 @@ public sealed class AuthService : IAuthService
         };
     }
 
-    //
+    private static CookieOptions CreateRefreshTokenCookieOptions(DateTimeOffset expires)
+    {
+        return new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.None,
+            Expires = expires,
+            Path = "/",
+        };
+    }
+
     private static void ClearRefreshTokenCookie(HttpContext httpContext)
     {
         httpContext.Response.Cookies.Append(
             "refreshToken",
             string.Empty,
-            new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = httpContext.Request.IsHttps,
-                SameSite = SameSiteMode.Strict,
-                Expires = DateTimeOffset.UtcNow.AddDays(-1),
-                Path = "/",
-            });
+            CreateRefreshTokenCookieOptions(DateTimeOffset.UtcNow.AddDays(-1)));
     }
 
         private async Task RevokeAllRefreshTokensForUserAsync(Guid userId, CancellationToken cancellationToken)

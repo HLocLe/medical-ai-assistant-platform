@@ -6,6 +6,7 @@ using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Persistence;
 using MedMateAI.Domain.Repository;
 using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Logging;
 
 namespace MedMateAI.Application.Service;
 
@@ -23,21 +24,36 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
     private readonly IGenericRepository<MedicalDepartment> _medicalDepartmentRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDistributedCache _cache;
+    private readonly ILogger<MedicalDepartmentService> _logger;
 
     public MedicalDepartmentService(
         IGenericRepository<MedicalDepartment> medicalDepartmentRepository,
         IUnitOfWork unitOfWork,
-        IDistributedCache cache)
+        IDistributedCache cache,
+        ILogger<MedicalDepartmentService> logger)
     {
         _medicalDepartmentRepository = medicalDepartmentRepository;
         _unitOfWork = unitOfWork;
         _cache = cache;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<MedicalDepartmentResponse>> ListMedicalDepartmentsAsync(
         CancellationToken cancellationToken = default)
     {
-        var cached = await _cache.GetStringAsync(AllDepartmentsCacheKey, cancellationToken);
+
+        string? cached;
+
+        try
+        {
+            cached = await _cache.GetStringAsync(AllDepartmentsCacheKey, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            cached = null;
+            _logger.LogWarning(ex, "Redis cache read failed for key {CacheKey}. Loading from database.", AllDepartmentsCacheKey);
+        }
+
         if (!string.IsNullOrWhiteSpace(cached))
         {
             var cachedResponse = JsonSerializer.Deserialize<List<MedicalDepartmentResponse>>(cached);
@@ -55,11 +71,18 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
             .Select(MapToResponse)
             .ToList();
 
-        await _cache.SetStringAsync(
-            AllDepartmentsCacheKey,
-            JsonSerializer.Serialize(response),
-            CacheOptions,
-            cancellationToken);
+        try
+        {
+            await _cache.SetStringAsync(
+                AllDepartmentsCacheKey,
+                JsonSerializer.Serialize(response),
+                CacheOptions,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Redis cache write failed for key {CacheKey}. Response served from database.", AllDepartmentsCacheKey);
+        }
 
         return response;
     }

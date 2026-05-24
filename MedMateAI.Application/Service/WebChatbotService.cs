@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using MedMateAI.Application.DTOs.AIConfigs.Responses;
@@ -7,7 +6,7 @@ using MedMateAI.Application.DTOs.WebChatbot.Requests;
 using MedMateAI.Application.DTOs.WebChatbot.Responses;
 using MedMateAI.Application.IService;
 
-namespace MedMateAI.Infrastructure.AI;
+namespace MedMateAI.Application.Service;
 
 public sealed class WebChatbotService : IWebChatbotService
 {
@@ -64,6 +63,11 @@ public sealed class WebChatbotService : IWebChatbotService
     private static readonly JsonSerializerOptions PromptJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    private static readonly JsonSerializerOptions AiJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
     };
 
     private static readonly string[] SupportedIntents =
@@ -186,23 +190,19 @@ public sealed class WebChatbotService : IWebChatbotService
         var temperature = DefaultTemperature;
         var maxTokens = DefaultMaxTokens;
 
-        if (!string.IsNullOrWhiteSpace(aiConfig?.ModelParams)
-            && TryParseModelParams(aiConfig.ModelParams, out var parsedModelParams))
+        if (!string.IsNullOrWhiteSpace(aiConfig?.Model))
         {
-            if (!string.IsNullOrWhiteSpace(parsedModelParams.Model))
-            {
-                model = parsedModelParams.Model.Trim();
-            }
+            model = aiConfig.Model.Trim();
+        }
 
-            if (parsedModelParams.Temperature.HasValue && parsedModelParams.Temperature.Value is >= 0 and <= 2)
-            {
-                temperature = parsedModelParams.Temperature.Value;
-            }
+        if (aiConfig?.Temperature is >= 0 and <= 2)
+        {
+            temperature = aiConfig.Temperature.Value;
+        }
 
-            if (parsedModelParams.MaxTokens.HasValue && parsedModelParams.MaxTokens.Value > 0)
-            {
-                maxTokens = parsedModelParams.MaxTokens.Value;
-            }
+        if (aiConfig?.MaxTokens is > 0)
+        {
+            maxTokens = aiConfig.MaxTokens.Value;
         }
 
         return new ResolvedChatConfig(systemPrompt, model, temperature, maxTokens);
@@ -255,32 +255,6 @@ public sealed class WebChatbotService : IWebChatbotService
         return builder.ToString();
     }
 
-    private static bool TryParseModelParams(string modelParamsJson, out ModelParams parsedModelParams)
-    {
-        parsedModelParams = new ModelParams();
-
-        try
-        {
-            using var document = JsonDocument.Parse(modelParamsJson);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return false;
-            }
-
-            parsedModelParams.Provider = TryGetStringProperty(document.RootElement, "provider");
-            parsedModelParams.Model = TryGetStringProperty(document.RootElement, "model");
-            parsedModelParams.Temperature = TryGetDecimalProperty(document.RootElement, "temperature");
-            parsedModelParams.MaxTokens = TryGetIntProperty(document.RootElement, "maxTokens")
-                ?? TryGetIntProperty(document.RootElement, "max_tokens");
-
-            return true;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    }
-
     private static bool TryParseAIJsonResponse(string content, out WebChatbotAIJsonResponse aiJsonResponse)
     {
         aiJsonResponse = new WebChatbotAIJsonResponse();
@@ -298,16 +272,16 @@ public sealed class WebChatbotService : IWebChatbotService
 
         try
         {
-            using var document = JsonDocument.Parse(normalizedJson);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            var parsed = JsonSerializer.Deserialize<WebChatbotAIJsonResponse>(normalizedJson, AiJsonOptions);
+            if (parsed is null)
             {
                 return false;
             }
 
-            aiJsonResponse.Answer = TryGetStringProperty(document.RootElement, "answer")?.Trim() ?? string.Empty;
-            aiJsonResponse.Intent = TryGetStringProperty(document.RootElement, "intent")?.Trim();
-            aiJsonResponse.NeedsMoreInformation = TryGetBooleanProperty(document.RootElement, "needsMoreInformation");
-            aiJsonResponse.RecommendedPlanIds = ParseGuidCollectionFromProperty(document.RootElement, "recommendedPlanIds");
+            aiJsonResponse = parsed;
+            aiJsonResponse.RecommendedPlanIds ??= [];
+            aiJsonResponse.Answer = aiJsonResponse.Answer.Trim();
+            aiJsonResponse.Intent = aiJsonResponse.Intent?.Trim();
 
             return true;
         }
@@ -315,56 +289,6 @@ public sealed class WebChatbotService : IWebChatbotService
         {
             return false;
         }
-    }
-
-    private static IReadOnlyList<Guid> ParseGuidCollectionFromProperty(JsonElement root, string propertyName)
-    {
-        if (!TryGetPropertyIgnoreCase(root, propertyName, out var idsElement))
-        {
-            return Array.Empty<Guid>();
-        }
-
-        var ids = new List<Guid>();
-        if (idsElement.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var element in idsElement.EnumerateArray())
-            {
-                var id = ParseGuidFromElement(element);
-                if (id.HasValue)
-                {
-                    ids.Add(id.Value);
-                }
-            }
-
-            return ids;
-        }
-
-        var singleId = ParseGuidFromElement(idsElement);
-        if (singleId.HasValue)
-        {
-            ids.Add(singleId.Value);
-        }
-
-        return ids;
-    }
-
-    private static Guid? ParseGuidFromElement(JsonElement element)
-    {
-        if (element.ValueKind == JsonValueKind.String
-            && Guid.TryParse(element.GetString(), out var parsedGuid))
-        {
-            return parsedGuid;
-        }
-
-        if (element.ValueKind == JsonValueKind.Object
-            && TryGetPropertyIgnoreCase(element, "id", out var nestedIdElement)
-            && nestedIdElement.ValueKind == JsonValueKind.String
-            && Guid.TryParse(nestedIdElement.GetString(), out parsedGuid))
-        {
-            return parsedGuid;
-        }
-
-        return null;
     }
 
     private static string StripMarkdownCodeFence(string content)
@@ -392,112 +316,6 @@ public sealed class WebChatbotService : IWebChatbotService
         return trimmed.Trim();
     }
 
-    private static string? TryGetStringProperty(JsonElement root, string propertyName)
-    {
-        if (!TryGetPropertyIgnoreCase(root, propertyName, out var property))
-        {
-            return null;
-        }
-
-        return property.ValueKind == JsonValueKind.String ? property.GetString() : property.ToString();
-    }
-
-    private static decimal? TryGetDecimalProperty(JsonElement root, string propertyName)
-    {
-        if (!TryGetPropertyIgnoreCase(root, propertyName, out var property))
-        {
-            return null;
-        }
-
-        if (property.ValueKind == JsonValueKind.Number && property.TryGetDecimal(out var decimalValue))
-        {
-            return decimalValue;
-        }
-
-        if (property.ValueKind == JsonValueKind.String
-            && decimal.TryParse(
-                property.GetString(),
-                NumberStyles.Number,
-                CultureInfo.InvariantCulture,
-                out decimalValue))
-        {
-            return decimalValue;
-        }
-
-        return null;
-    }
-
-    private static int? TryGetIntProperty(JsonElement root, string propertyName)
-    {
-        if (!TryGetPropertyIgnoreCase(root, propertyName, out var property))
-        {
-            return null;
-        }
-
-        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var intValue))
-        {
-            return intValue;
-        }
-
-        if (property.ValueKind == JsonValueKind.String
-            && int.TryParse(property.GetString(), out intValue))
-        {
-            return intValue;
-        }
-
-        return null;
-    }
-
-    private static bool TryGetBooleanProperty(JsonElement root, string propertyName)
-    {
-        if (!TryGetPropertyIgnoreCase(root, propertyName, out var property))
-        {
-            return false;
-        }
-
-        if (property.ValueKind == JsonValueKind.True)
-        {
-            return true;
-        }
-
-        if (property.ValueKind == JsonValueKind.False)
-        {
-            return false;
-        }
-
-        if (property.ValueKind == JsonValueKind.String
-            && bool.TryParse(property.GetString(), out var boolValue))
-        {
-            return boolValue;
-        }
-
-        return false;
-    }
-
-    private static bool TryGetPropertyIgnoreCase(
-        JsonElement element,
-        string propertyName,
-        out JsonElement propertyValue)
-    {
-        if (element.ValueKind != JsonValueKind.Object)
-        {
-            propertyValue = default;
-            return false;
-        }
-
-        foreach (var property in element.EnumerateObject())
-        {
-            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
-            {
-                propertyValue = property.Value;
-                return true;
-            }
-        }
-
-        propertyValue = default;
-        return false;
-    }
-
     private static string NormalizeIntent(string? intent)
     {
         if (string.IsNullOrWhiteSpace(intent))
@@ -522,15 +340,4 @@ public sealed class WebChatbotService : IWebChatbotService
         string Model,
         decimal Temperature,
         int MaxTokens);
-
-    private sealed class ModelParams
-    {
-        public string? Provider { get; set; }
-
-        public string? Model { get; set; }
-
-        public decimal? Temperature { get; set; }
-
-        public int? MaxTokens { get; set; }
-    }
 }
