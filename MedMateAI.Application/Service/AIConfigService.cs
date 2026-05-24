@@ -183,9 +183,14 @@ public sealed class AIConfigService : IAIConfigService
             throw new ArgumentException("TaskType is required.");
         }
 
-        if (!IsValidJson(request.ModelParams))
+        if (!IsValidTemperature(request.Temperature))
         {
-            throw new ArgumentException("ModelParams must be valid JSON.");
+            throw new ArgumentException("Temperature must be between 0 and 2.");
+        }
+
+        if (!IsValidMaxTokens(request.MaxTokens))
+        {
+            throw new ArgumentException("MaxTokens must be greater than 0 when provided.");
         }
 
         var taskType = request.TaskType.Trim();
@@ -206,7 +211,9 @@ public sealed class AIConfigService : IAIConfigService
             Id = Guid.NewGuid(),
             TaskType = taskType,
             SystemPrompt = NormalizeTextAllowEmpty(request.SystemPrompt),
-            ModelParams = NormalizeJsonString(request.ModelParams),
+            Model = NormalizeTextAllowEmpty(request.Model),
+            Temperature = request.Temperature,
+            MaxTokens = request.MaxTokens,
             IsActive = request.IsActive,
             CreatedAt = DateTime.UtcNow,
         };
@@ -271,14 +278,29 @@ public sealed class AIConfigService : IAIConfigService
             entity.SystemPrompt = NormalizeTextAllowEmpty(request.SystemPrompt);
         }
 
-        if (request.ModelParams is not null)
+        if (request.Model is not null)
         {
-            if (!IsValidJson(request.ModelParams))
+            entity.Model = NormalizeTextAllowEmpty(request.Model);
+        }
+
+        if (request.Temperature.HasValue)
+        {
+            if (!IsValidTemperature(request.Temperature))
             {
-                throw new ArgumentException("ModelParams must be valid JSON.");
+                throw new ArgumentException("Temperature must be between 0 and 2.");
             }
 
-            entity.ModelParams = NormalizeJsonString(request.ModelParams);
+            entity.Temperature = request.Temperature;
+        }
+
+        if (request.MaxTokens.HasValue)
+        {
+            if (!IsValidMaxTokens(request.MaxTokens))
+            {
+                throw new ArgumentException("MaxTokens must be greater than 0 when provided.");
+            }
+
+            entity.MaxTokens = request.MaxTokens;
         }
 
         if (request.IsActive.HasValue)
@@ -388,34 +410,23 @@ public sealed class AIConfigService : IAIConfigService
             Id = entity.Id,
             TaskType = entity.TaskType,
             SystemPrompt = entity.SystemPrompt,
-            ModelParams = entity.ModelParams,
+            Model = entity.Model,
+            Temperature = entity.Temperature,
+            MaxTokens = entity.MaxTokens,
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
         };
     }
 
-    private static bool IsValidJson(string? json)
+    private static bool IsValidTemperature(decimal? temperature)
     {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return true;
-        }
-
-        try
-        {
-            using var _ = JsonDocument.Parse(json);
-            return true;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
+        return !temperature.HasValue || temperature.Value is >= 0 and <= 2;
     }
 
-    private static string? NormalizeJsonString(string? json)
+    private static bool IsValidMaxTokens(int? maxTokens)
     {
-        return string.IsNullOrWhiteSpace(json) ? null : json.Trim();
+        return !maxTokens.HasValue || maxTokens.Value > 0;
     }
 
     private static string? NormalizeTextAllowEmpty(string? value)

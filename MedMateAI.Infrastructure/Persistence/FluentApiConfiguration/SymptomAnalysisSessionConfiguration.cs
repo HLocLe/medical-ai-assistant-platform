@@ -1,4 +1,5 @@
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 using MedMateAI.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -13,6 +14,12 @@ public sealed class SymptomAnalysisSessionConfiguration : IEntityTypeConfigurati
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("SymptomAnalysisSessionId").ValueGeneratedOnAdd();
+
+        builder.Property(x => x.Status)
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .IsRequired()
+            .HasDefaultValue(SymptomAnalysisSessionStatus.Processing);
 
         builder.HasOne<ApplicationUser>()
             .WithMany(x => x.SymptomAnalysisSessions)

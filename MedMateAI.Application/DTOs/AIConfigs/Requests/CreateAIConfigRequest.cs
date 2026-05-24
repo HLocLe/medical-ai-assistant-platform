@@ -6,7 +6,11 @@ public sealed class CreateAIConfigRequest
 
     public string? SystemPrompt { get; set; }
 
-    public string? ModelParams { get; set; }
+    public string? Model { get; set; }
+
+    public decimal? Temperature { get; set; }
+
+    public int? MaxTokens { get; set; }
 
     public bool IsActive { get; set; } = true;
 }

@@ -50,7 +50,8 @@ public static class DependencyInjection
         services.AddScoped<IPatientProfileService, PatientProfileService>();
         services.AddScoped<ISubscriptionPlanService, SubscriptionPlanService>();
         services.AddScoped<IAIConfigService, AIConfigService>();
-        services.AddScoped<IWebChatbotService, MedMateAI.Infrastructure.AI.WebChatbotService>();
+        services.AddScoped<IWebChatbotService, WebChatbotService>();
+        services.AddScoped<ISymptomAnalysisService, SymptomAnalysisService>();
       
         
         //
@@ -64,6 +65,7 @@ public static class DependencyInjection
                 ?? throw new InvalidOperationException("Redis connection string is missing.");
         });
 
+        //
         services.AddHttpClient<IEmailOtpSender, BrevoEmailOtpService>(client =>
         {
             client.BaseAddress = new Uri("https://api.brevo.com/");
@@ -88,7 +90,8 @@ public static class DependencyInjection
             .AddRoles<IdentityRole<Guid>>()
             .AddEntityFrameworkStores<ApplicationDbContext>()
             .AddDefaultTokenProviders();
-
+        
+        //
         services.AddHostedService<IdentitySeedHostedService>();
         
         //

@@ -16,6 +16,7 @@ public sealed class AISystemConfigConfiguration : IEntityTypeConfiguration<AISys
         builder.HasIndex(x => x.TaskType).IsUnique();
 
         builder.Property(x => x.TaskType).HasMaxLength(128).IsRequired();
+        builder.Property(x => x.Model).HasMaxLength(256);
 
         builder.HasOne(x => x.SymptomAnalysisSession)
             .WithMany(x => x.AISystemConfigs)
