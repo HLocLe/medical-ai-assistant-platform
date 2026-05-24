@@ -1,3 +1,4 @@
+using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Repository;
 
 namespace MedMateAI.Domain.Persistence;
@@ -5,6 +6,9 @@ namespace MedMateAI.Domain.Persistence;
 public interface IUnitOfWork : IAsyncDisposable
 {
     IMedicalFacilityRepository MedicalFacilities { get; }
+    IDoctorRepository Doctors { get; }
+    IGenericRepository<MedicalDepartment> MedicalDepartments { get; }
+    IGenericRepository<FacilityDepartment> FacilityDepartments { get; }
 
     ISymptomAnalysisSessionRepository SymptomAnalysisSessions { get; }
 

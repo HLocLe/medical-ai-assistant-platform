@@ -1,3 +1,4 @@
+using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Persistence;
 using MedMateAI.Domain.Repository;
 using MedMateAI.Infrastructure.Repositories;
@@ -9,6 +10,9 @@ public sealed class UnitOfWork : IUnitOfWork
 {
     private readonly ApplicationDbContext _context;
     private IMedicalFacilityRepository? _medicalFacilities;
+    private IDoctorRepository? _doctors;
+    private IGenericRepository<MedicalDepartment>? _medicalDepartments;
+    private IGenericRepository<FacilityDepartment>? _facilityDepartments;
     private ISymptomAnalysisSessionRepository? _symptomAnalysisSessions;
     private ISessionSymptomRepository? _sessionSymptoms;
     private IDepartmentRecommendationRepository? _departmentRecommendations;
@@ -22,6 +26,15 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IMedicalFacilityRepository MedicalFacilities =>
         _medicalFacilities ??= new MedicalFacilityRepository(_context);
+
+    public IDoctorRepository Doctors =>
+        _doctors ??= new DoctorRepository(_context);
+
+    public IGenericRepository<MedicalDepartment> MedicalDepartments =>
+        _medicalDepartments ??= new GenericRepository<MedicalDepartment>(_context);
+
+    public IGenericRepository<FacilityDepartment> FacilityDepartments =>
+        _facilityDepartments ??= new GenericRepository<FacilityDepartment>(_context);
 
     public ISymptomAnalysisSessionRepository SymptomAnalysisSessions =>
         _symptomAnalysisSessions ??= new SymptomAnalysisSessionRepository(_context);
