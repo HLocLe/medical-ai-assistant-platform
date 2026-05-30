@@ -14,6 +14,15 @@ public sealed class PaymentTransactionConfiguration : IEntityTypeConfiguration<P
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("PaymentTransactionId").ValueGeneratedOnAdd();
 
+        builder.Property(x => x.Amount)
+            .HasPrecision(18, 2);
+
+        builder.Property(x => x.PaymentProvider)
+            .HasMaxLength(50);
+
+        builder.Property(x => x.Status)
+            .HasMaxLength(32);
+
         builder.Property(x => x.TransactionReference)
             .HasMaxLength(100);
 
