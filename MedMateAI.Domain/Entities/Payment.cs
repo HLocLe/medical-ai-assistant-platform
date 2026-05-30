@@ -17,4 +17,6 @@ public sealed class Payment : BaseEntity
     public DateTime? PaidAt { get; set; }
 
     public UserSubscription UserSubscription { get; set; } = null!;
+
+    public ICollection<PaymentTransaction> Transactions { get; set; } = new List<PaymentTransaction>();
 }
