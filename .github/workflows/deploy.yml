@@ -21,8 +21,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./SEP490_MedicalAIAssistant
-          file: ./SEP490_MedicalAIAssistant/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/medmate-api:latest
 
