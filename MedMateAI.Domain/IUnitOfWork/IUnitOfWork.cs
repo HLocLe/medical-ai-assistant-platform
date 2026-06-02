@@ -8,6 +8,10 @@ public interface IUnitOfWork : IAsyncDisposable
     IMedicalFacilityRepository MedicalFacilities { get; }
     IDoctorRepository Doctors { get; }
     IFeedbackReviewRepository FeedbackReviews { get; }
+    IGenericRepository<SubscriptionPlan> SubscriptionPlans { get; }
+    IUserSubscriptionRepository UserSubscriptions { get; }
+    IPaymentRepository Payments { get; }
+    IPaymentTransactionRepository PaymentTransactions { get; }
 
     ISymptomAnalysisSessionRepository SymptomAnalysisSessions { get; }
 
