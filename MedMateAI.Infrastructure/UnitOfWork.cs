@@ -12,6 +12,10 @@ public sealed class UnitOfWork : IUnitOfWork
     private IMedicalFacilityRepository? _medicalFacilities;
     private IDoctorRepository? _doctors;
     private IFeedbackReviewRepository? _feedbackReviews;
+    private IGenericRepository<SubscriptionPlan>? _subscriptionPlans;
+    private IUserSubscriptionRepository? _userSubscriptions;
+    private IPaymentRepository? _payments;
+    private IPaymentTransactionRepository? _paymentTransactions;
     private ISymptomAnalysisSessionRepository? _symptomAnalysisSessions;
     private ISessionSymptomRepository? _sessionSymptoms;
     private IDepartmentRecommendationRepository? _departmentRecommendations;
@@ -32,6 +36,18 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IFeedbackReviewRepository FeedbackReviews =>
         _feedbackReviews ??= new FeedbackReviewRepository(_context);
+
+    public IGenericRepository<SubscriptionPlan> SubscriptionPlans =>
+        _subscriptionPlans ??= new GenericRepository<SubscriptionPlan>(_context);
+
+    public IUserSubscriptionRepository UserSubscriptions =>
+        _userSubscriptions ??= new UserSubscriptionRepository(_context);
+
+    public IPaymentRepository Payments =>
+        _payments ??= new PaymentRepository(_context);
+
+    public IPaymentTransactionRepository PaymentTransactions =>
+        _paymentTransactions ??= new PaymentTransactionRepository(_context);
 
     public ISymptomAnalysisSessionRepository SymptomAnalysisSessions =>
         _symptomAnalysisSessions ??= new SymptomAnalysisSessionRepository(_context);
