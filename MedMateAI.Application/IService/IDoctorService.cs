@@ -28,6 +28,7 @@ public interface IDoctorService
         Guid id,
         CancellationToken cancellationToken = default);
 
+       
     Task<(bool Succeeded, IEnumerable<string> Errors, DoctorResponse? Data)> CreateDoctorAsync(
         CreateDoctorRequest request,
         CancellationToken cancellationToken = default);

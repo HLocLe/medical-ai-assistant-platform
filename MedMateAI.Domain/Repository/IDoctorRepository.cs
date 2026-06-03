@@ -26,4 +26,6 @@ public interface IDoctorRepository : IGenericRepository<Doctor>
     Task<Doctor?> GetByIdWithDetailsAsync(
         Guid id,
         CancellationToken cancellationToken = default);
+
+  
 }

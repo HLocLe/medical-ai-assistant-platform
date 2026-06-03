@@ -4,6 +4,7 @@ namespace MedMateAI.Domain.Entities;
 
 public sealed class Doctor : BaseEntity
 {
+    public Guid UserId { get; set; }
     public Guid FacilityDepartmentId { get; set; }
 
     public string? FullName { get; set; }
@@ -12,7 +13,7 @@ public sealed class Doctor : BaseEntity
 
     public string? AcademicTitle { get; set; }
 
-    public DepartmentRole DepartmentRole { get; set; } = DepartmentRole.Staff;
+    public DepartmentRole DepartmentRole { get; set; } = DepartmentRole.Doctor;
 
     public int? YearsOfExperience { get; set; }
 

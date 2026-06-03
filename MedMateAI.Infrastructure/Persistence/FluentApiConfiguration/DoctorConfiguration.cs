@@ -1,5 +1,6 @@
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
+using MedMateAI.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -14,9 +15,18 @@ public sealed class DoctorConfiguration : IEntityTypeConfiguration<Doctor>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("DoctorId").ValueGeneratedOnAdd();
 
+        builder.Property(x => x.UserId).IsRequired();
+
+        builder.HasIndex(x => x.UserId).IsUnique();
+
+        builder.HasOne<ApplicationUser>()
+            .WithOne(x => x.Doctor)
+            .HasForeignKey<Doctor>(x => x.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         builder.Property(x => x.DepartmentRole)
             .HasConversion<int>()
-            .HasDefaultValue(DepartmentRole.Staff)
+            .HasDefaultValue(DepartmentRole.Doctor)
             .IsRequired();
 
         builder.HasOne(x => x.FacilityDepartment)

@@ -1,3 +1,4 @@
+using MedMateAI.Domain.Enums;
 using MedMateAI.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +21,7 @@ public static class IdentitySeeder
         var userManager = sp.GetRequiredService<UserManager<ApplicationUser>>();
       
 
-        var roles = new[] { "Admin", "Staff", "User" };
+        var roles = new[] { "Admin", "Doctor", "User" };
         foreach (var role in roles)
         {
             if (!await roleManager.RoleExistsAsync(role))
@@ -40,6 +41,7 @@ public static class IdentitySeeder
             {
                 UserName = adminEmail,
                 Email = adminEmail,
+                Status = UserStatus.Confirmed,
                 EmailConfirmed = true,
                 DisplayName = adminDisplayName,
             };
@@ -51,25 +53,27 @@ public static class IdentitySeeder
             }
         }
 
-        var staffEmail = "staff@medmate.local";
-        var staffPassword = "Staff@12345";
-        var staffDisplayName = "Demo Staff";
+        var doctorEmail = "doctor@medmate.local";
+        var doctorPassword = "Doctor@12345";
+        var doctorDisplayName = "Demo Doctor";
 
-        var existingStaff = await userManager.FindByEmailAsync(staffEmail);
-        if (existingStaff is null)
+        var existingDoctor = await userManager.FindByEmailAsync(doctorEmail);
+        if (existingDoctor is null)
         {
-            var staffUser = new ApplicationUser
+            var doctorUser = new ApplicationUser
             {
-                UserName = staffEmail,
-                Email = staffEmail,
+                UserName = doctorEmail,
+                Email = doctorEmail,
+                Status = UserStatus.Confirmed,
                 EmailConfirmed = true,
-                DisplayName = staffDisplayName,
+                DisplayName = doctorDisplayName,
             };
 
-            var createResult = await userManager.CreateAsync(staffUser, staffPassword);
+            var createResult = await userManager.CreateAsync(doctorUser, doctorPassword);
             if (createResult.Succeeded)
             {
-                await userManager.AddToRoleAsync(staffUser, "Staff");
+                await userManager.AddToRoleAsync(doctorUser, "Doctor");
+
             }
         }
     }
