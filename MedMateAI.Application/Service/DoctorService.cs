@@ -156,6 +156,11 @@ public sealed class DoctorService : IDoctorService
 
         var errors = new List<string>();
 
+        if (request.UserId == Guid.Empty)
+        {
+            errors.Add("UserId is required.");
+        }
+
         if (request.FacilityDepartmentId == Guid.Empty)
         {
             errors.Add("FacilityDepartmentId is required.");
@@ -211,6 +216,7 @@ public sealed class DoctorService : IDoctorService
         var entity = new Doctor
         {
             Id = Guid.NewGuid(),
+            UserId = request.UserId,
             FacilityDepartmentId = request.FacilityDepartmentId,
             FullName = fullName,
             Specialty = NormalizeText(request.Specialty),
@@ -478,6 +484,7 @@ public sealed class DoctorService : IDoctorService
         return new DoctorResponse
         {
             Id = entity.Id,
+            UserId = entity.UserId,
             FacilityDepartmentId = entity.FacilityDepartmentId,
             FacilityId = facilityDepartment?.FacilityId ?? Guid.Empty,
             FacilityName = facility?.FacilityName,

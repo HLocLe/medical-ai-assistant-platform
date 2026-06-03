@@ -121,7 +121,7 @@ public sealed class AuthService : IAuthService
             return (false, identityResult.Errors.Select(e => e.Description), null);
         }
 
-        var addRoleResult = await _userManager.AddToRoleAsync(user, "Staff");
+        var addRoleResult = await _userManager.AddToRoleAsync(user, "Doctor");
         
         if (!addRoleResult.Succeeded)
         {

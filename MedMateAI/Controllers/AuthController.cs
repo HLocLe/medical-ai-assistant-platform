@@ -59,7 +59,7 @@ public sealed class AuthController : ControllerBase
             return BadRequest(new ApiResponse<AuthResponse>
             {
                 Success = false,
-                Message = "Staff registration failed",
+                Message = "Doctor registration failed",
                 Errors = errors.ToList(),
             });
         }
@@ -67,7 +67,7 @@ public sealed class AuthController : ControllerBase
         return Ok(new ApiResponse<AuthResponse>
         {
             Success = true,
-            Message = "Staff account created. Status is pending until approved.",
+            Message = "Doctor account created. Status is pending until approved.",
             Data = result,
         });
     }

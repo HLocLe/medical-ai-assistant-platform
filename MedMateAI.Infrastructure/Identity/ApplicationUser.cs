@@ -10,6 +10,8 @@ public class ApplicationUser : IdentityUser<Guid>
 
     public PatientProfile? PatientProfile { get; set; }
 
+    public Doctor? Doctor { get; set; }
+
     public ICollection<SymptomAnalysisSession> SymptomAnalysisSessions { get; set; } = new List<SymptomAnalysisSession>();
 
     public ICollection<ConsultationSession> ConsultationSessions { get; set; } = new List<ConsultationSession>();

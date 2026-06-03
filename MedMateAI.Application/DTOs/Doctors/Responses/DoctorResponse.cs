@@ -6,6 +6,8 @@ public sealed class DoctorResponse
 {
     public Guid Id { get; set; }
 
+    public Guid UserId { get; set; }
+
     public Guid FacilityDepartmentId { get; set; }
 
     public Guid FacilityId { get; set; }

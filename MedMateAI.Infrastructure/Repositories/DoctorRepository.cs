@@ -88,6 +88,8 @@ public sealed class DoctorRepository : GenericRepository<Doctor>, IDoctorReposit
             .FirstOrDefaultAsync(cancellationToken);
     }
 
+   
+
     private IQueryable<Doctor> BuildDetailsQuery(bool onlyActive)
     {
         var query = _context.Doctors
@@ -148,7 +150,7 @@ public sealed class DoctorRepository : GenericRepository<Doctor>, IDoctorReposit
         }
 
         var normalizedSearch = search.Trim().ToLower();
-        var matchStaff = DepartmentRole.Staff.ToString().ToLower().Contains(normalizedSearch);
+        var matchStaff = DepartmentRole.Doctor.ToString().ToLower().Contains(normalizedSearch);
         var matchDeputyHead = DepartmentRole.DeputyHead.ToString().ToLower().Contains(normalizedSearch);
         var matchHead = DepartmentRole.Head.ToString().ToLower().Contains(normalizedSearch);
         var matchLeadingExpert = DepartmentRole.LeadingExpert.ToString().ToLower().Contains(normalizedSearch);
@@ -158,7 +160,7 @@ public sealed class DoctorRepository : GenericRepository<Doctor>, IDoctorReposit
             (x.FullName ?? string.Empty).ToLower().Contains(normalizedSearch)
             || (x.Specialty ?? string.Empty).ToLower().Contains(normalizedSearch)
             || (x.AcademicTitle ?? string.Empty).ToLower().Contains(normalizedSearch)
-            || (matchStaff && x.DepartmentRole == DepartmentRole.Staff)
+            || (matchStaff && x.DepartmentRole == DepartmentRole.Doctor)
             || (matchDeputyHead && x.DepartmentRole == DepartmentRole.DeputyHead)
             || (matchHead && x.DepartmentRole == DepartmentRole.Head)
             || (matchLeadingExpert && x.DepartmentRole == DepartmentRole.LeadingExpert)
