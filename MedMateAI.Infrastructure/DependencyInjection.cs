@@ -14,6 +14,7 @@ using MedMateAI.Infrastructure.Persistence.Seeder;
 using MedMateAI.Infrastructure.Repositories;
 using MedMateAI.Infrastructure.Email.Brevo;
 using MedMateAI.Infrastructure.AI;
+using MedMateAI.Infrastructure.Payments.PayOS;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +54,11 @@ public static class DependencyInjection
         services.AddScoped<IAIConfigService, AIConfigService>();
         services.AddScoped<IWebChatbotService, WebChatbotService>();
         services.AddScoped<ISymptomAnalysisService, SymptomAnalysisService>();
+        services.AddScoped<IPayOSService, PayOSService>();
+        services.AddScoped<IUserSubscriptionService, UserSubscriptionService>();
+        services.AddScoped<IPaymentService, PaymentService>();
+
+        services.Configure<PayOSOptions>(configuration.GetSection("PayOS"));
       
         
         //
