@@ -2,6 +2,7 @@ using System.Text;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Payments.Responses;
 using MedMateAI.Application.IService;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -17,6 +18,8 @@ public sealed class PaymentsController : ControllerBase
         _paymentService = paymentService;
     }
 
+    // Legacy/backend testing only. Production payOS ReturnUrl should point to the FE route.
+    [AllowAnonymous]
     [HttpGet("payos-return")]
     [ProducesResponseType(typeof(ApiResponse<PayOSReturnResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> PayOSReturn(CancellationToken cancellationToken = default)
@@ -32,6 +35,8 @@ public sealed class PaymentsController : ControllerBase
         });
     }
 
+    // Legacy/backend testing only. Production payOS CancelUrl should point to the FE route.
+    [AllowAnonymous]
     [HttpGet("payos-cancel")]
     [ProducesResponseType(typeof(ApiResponse<PayOSReturnResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> PayOSCancel(CancellationToken cancellationToken = default)
@@ -47,6 +52,7 @@ public sealed class PaymentsController : ControllerBase
         });
     }
 
+    [AllowAnonymous]
     [HttpPost("payos-webhook")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -61,6 +67,42 @@ public sealed class PaymentsController : ControllerBase
         }
 
         return Ok("OK");
+    }
+
+    [AllowAnonymous]
+    [HttpGet("payos-status/{orderCode:long}")]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetPayOSStatus(
+        long orderCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (orderCode <= 0)
+        {
+            return BadRequest(new ApiResponse<PayOSPaymentStatusResponse>
+            {
+                Success = false,
+                Message = "Invalid orderCode.",
+            });
+        }
+
+        var data = await _paymentService.GetPayOSPaymentStatusAsync(orderCode, cancellationToken);
+        if (data is null)
+        {
+            return NotFound(new ApiResponse<PayOSPaymentStatusResponse>
+            {
+                Success = false,
+                Message = "Payment transaction not found.",
+            });
+        }
+
+        return Ok(new ApiResponse<PayOSPaymentStatusResponse>
+        {
+            Success = true,
+            Message = data.Message,
+            Data = data,
+        });
     }
 
     [HttpGet("{id:guid}")]
