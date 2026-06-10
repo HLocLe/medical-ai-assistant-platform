@@ -16,6 +16,10 @@ public interface IPaymentService
         string rawBody,
         CancellationToken cancellationToken = default);
 
+    Task<PayOSPaymentStatusResponse?> GetPayOSPaymentStatusAsync(
+        long orderCode,
+        CancellationToken cancellationToken = default);
+
     Task<PaymentResponse?> GetPaymentByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default);

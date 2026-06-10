@@ -11,8 +11,6 @@ namespace MedMateAI.Application.Service;
 public sealed class PaymentService : IPaymentService
 {
     private const string PaidStatus = "PAID";
-    private const string PendingStatus = "PENDING";
-    private const string ProcessingStatus = "PROCESSING";
     private const string CancelledStatus = "CANCELLED";
 
     private readonly IUnitOfWork _unitOfWork;
@@ -30,139 +28,14 @@ public sealed class PaymentService : IPaymentService
         IReadOnlyDictionary<string, string> queryParameters,
         CancellationToken cancellationToken = default)
     {
-        if (!TryGetOrderCode(queryParameters, out var orderCode))
-        {
-            return new PayOSReturnResponse
-            {
-                Success = false,
-                Message = "Invalid orderCode.",
-            };
-        }
-
-        var transaction = await _unitOfWork.PaymentTransactions.GetByTransactionReferenceAsync(
-            orderCode.ToString(CultureInfo.InvariantCulture),
-            cancellationToken);
-
-        if (transaction is null || transaction.Payment is null)
-        {
-            return new PayOSReturnResponse
-            {
-                Success = false,
-                Message = "Payment transaction not found.",
-                OrderCode = orderCode.ToString(CultureInfo.InvariantCulture),
-            };
-        }
-
-        var status = GetQueryValue(queryParameters, "status")?.ToUpperInvariant();
-        var responseCode = GetQueryValue(queryParameters, "code");
-        var paymentLinkId = GetQueryValue(queryParameters, "id");
-        var cancel = ParseBoolean(GetQueryValue(queryParameters, "cancel"));
-
-        if (string.Equals(status, PaidStatus, StringComparison.Ordinal))
-        {
-            await MarkPaymentPaidAsync(
-                transaction,
-                callback: null,
-                providerStatus: PaidStatus,
-                responseCode: responseCode,
-                providerTransactionId: paymentLinkId,
-                orderInfo: null,
-                rawResponse: BuildRawResponse(queryParameters),
-                cancellationToken);
-
-            return BuildReturnResponse(
-                transaction,
-                success: true,
-                message: "Payment confirmed.",
-                status: PaidStatus,
-                cancelled: false,
-                orderCode: orderCode);
-        }
-
-        if (cancel == true || string.Equals(status, CancelledStatus, StringComparison.Ordinal))
-        {
-            await MarkPaymentCancelledAsync(
-                transaction,
-                callback: null,
-                providerStatus: CancelledStatus,
-                responseCode: responseCode,
-                providerTransactionId: paymentLinkId,
-                rawResponse: BuildRawResponse(queryParameters),
-                cancellationToken);
-
-            return BuildReturnResponse(
-                transaction,
-                success: false,
-                message: "Payment cancelled.",
-                status: CancelledStatus,
-                cancelled: true,
-                orderCode: orderCode);
-        }
-
-        if (string.Equals(status, PendingStatus, StringComparison.Ordinal)
-            || string.Equals(status, ProcessingStatus, StringComparison.Ordinal))
-        {
-            return BuildReturnResponse(
-                transaction,
-                success: false,
-                message: "Payment is processing.",
-                status: status,
-                cancelled: false,
-                orderCode: orderCode);
-        }
-
-        return BuildReturnResponse(
-            transaction,
-            success: false,
-            message: "Payment not completed.",
-            status: status,
-            cancelled: cancel == true,
-            orderCode: orderCode);
+        return await BuildPayOSRedirectStatusResponseAsync(queryParameters, cancellationToken);
     }
 
     public async Task<PayOSReturnResponse> ProcessPayOSCancelAsync(
         IReadOnlyDictionary<string, string> queryParameters,
         CancellationToken cancellationToken = default)
     {
-        if (!TryGetOrderCode(queryParameters, out var orderCode))
-        {
-            return new PayOSReturnResponse
-            {
-                Success = false,
-                Message = "Invalid orderCode.",
-            };
-        }
-
-        var transaction = await _unitOfWork.PaymentTransactions.GetByTransactionReferenceAsync(
-            orderCode.ToString(CultureInfo.InvariantCulture),
-            cancellationToken);
-
-        if (transaction is null || transaction.Payment is null)
-        {
-            return new PayOSReturnResponse
-            {
-                Success = false,
-                Message = "Payment transaction not found.",
-                OrderCode = orderCode.ToString(CultureInfo.InvariantCulture),
-            };
-        }
-
-        await MarkPaymentCancelledAsync(
-            transaction,
-            callback: null,
-            providerStatus: CancelledStatus,
-            responseCode: GetQueryValue(queryParameters, "code"),
-            providerTransactionId: GetQueryValue(queryParameters, "id"),
-            rawResponse: BuildRawResponse(queryParameters),
-            cancellationToken);
-
-        return BuildReturnResponse(
-            transaction,
-            success: false,
-            message: "Payment cancelled.",
-            status: CancelledStatus,
-            cancelled: true,
-            orderCode: orderCode);
+        return await BuildPayOSRedirectStatusResponseAsync(queryParameters, cancellationToken);
     }
 
     public async Task<bool> ProcessPayOSWebhookAsync(
@@ -220,6 +93,27 @@ public sealed class PaymentService : IPaymentService
         return true;
     }
 
+    public async Task<PayOSPaymentStatusResponse?> GetPayOSPaymentStatusAsync(
+        long orderCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (orderCode <= 0)
+        {
+            return null;
+        }
+
+        var transaction = await _unitOfWork.PaymentTransactions.GetByTransactionReferenceAsync(
+            orderCode.ToString(CultureInfo.InvariantCulture),
+            cancellationToken);
+
+        if (transaction is null || transaction.Payment is null)
+        {
+            return null;
+        }
+
+        return BuildPaymentStatusResponse(transaction, orderCode);
+    }
+
     public async Task<PaymentResponse?> GetPaymentByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default)
@@ -247,6 +141,43 @@ public sealed class PaymentService : IPaymentService
             PaidAt = payment.PaidAt,
             CreatedAt = payment.CreatedAt,
             UpdatedAt = payment.UpdatedAt,
+        };
+    }
+
+    private async Task<PayOSReturnResponse> BuildPayOSRedirectStatusResponseAsync(
+        IReadOnlyDictionary<string, string> queryParameters,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetOrderCode(queryParameters, out var orderCode))
+        {
+            return new PayOSReturnResponse
+            {
+                Success = false,
+                Message = "Invalid orderCode.",
+            };
+        }
+
+        var status = await GetPayOSPaymentStatusAsync(orderCode, cancellationToken);
+
+        if (status is null)
+        {
+            return new PayOSReturnResponse
+            {
+                Success = false,
+                Message = "Payment transaction not found.",
+                OrderCode = orderCode.ToString(CultureInfo.InvariantCulture),
+            };
+        }
+
+        return new PayOSReturnResponse
+        {
+            Success = status.IsPaid && status.IsActive,
+            Message = status.Message,
+            PaymentId = status.PaymentId,
+            SubscriptionId = status.SubscriptionId,
+            OrderCode = status.OrderCode,
+            Status = status.PaymentStatus,
+            Cancelled = status.IsCancelled,
         };
     }
 
@@ -369,53 +300,56 @@ public sealed class PaymentService : IPaymentService
         return queryParameters.TryGetValue(key, out var value) ? value : null;
     }
 
-    private static bool? ParseBoolean(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        if (bool.TryParse(value, out var parsed))
-        {
-            return parsed;
-        }
-
-        if (string.Equals(value, "1", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        if (string.Equals(value, "0", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        return null;
-    }
-
-    private static string BuildRawResponse(IReadOnlyDictionary<string, string> queryParameters)
-    {
-        return string.Join("&", queryParameters.Select(x => $"{x.Key}={x.Value}"));
-    }
-
-    private static PayOSReturnResponse BuildReturnResponse(
+    private static PayOSPaymentStatusResponse BuildPaymentStatusResponse(
         PaymentTransaction transaction,
-        bool success,
-        string message,
-        string? status,
-        bool cancelled,
         long orderCode)
     {
-        return new PayOSReturnResponse
+        var payment = transaction.Payment;
+        var subscription = payment?.UserSubscription ?? transaction.UserSubscription;
+        var paymentStatus = payment?.Status.ToString() ?? transaction.Status ?? string.Empty;
+        var subscriptionStatus = subscription?.Status.ToString() ?? string.Empty;
+        var isPaid = payment?.Status == PaymentStatus.Paid;
+        var isActive = subscription?.Status == SubscriptionStatus.Active;
+        var isCancelled =
+            payment?.Status == PaymentStatus.Cancelled
+            || subscription?.Status == SubscriptionStatus.Cancelled
+            || string.Equals(transaction.Status, "Cancelled", StringComparison.OrdinalIgnoreCase);
+
+        return new PayOSPaymentStatusResponse
         {
-            Success = success,
-            Message = message,
+            OrderCode = orderCode.ToString(CultureInfo.InvariantCulture),
             PaymentId = transaction.PaymentId,
             SubscriptionId = transaction.UserSubscriptionId,
-            OrderCode = orderCode.ToString(CultureInfo.InvariantCulture),
-            Status = status,
-            Cancelled = cancelled,
+            PaymentStatus = paymentStatus,
+            SubscriptionStatus = subscriptionStatus,
+            IsPaid = isPaid,
+            IsActive = isActive,
+            IsCancelled = isCancelled,
+            Message = BuildPaymentStatusMessage(payment?.Status, subscription?.Status),
+        };
+    }
+
+    private static string BuildPaymentStatusMessage(
+        PaymentStatus? paymentStatus,
+        SubscriptionStatus? subscriptionStatus)
+    {
+        if (paymentStatus == PaymentStatus.Paid && subscriptionStatus == SubscriptionStatus.Active)
+        {
+            return "Payment is paid and subscription is active.";
+        }
+
+        if (paymentStatus == PaymentStatus.Paid)
+        {
+            return "Payment is paid, but subscription is not active.";
+        }
+
+        return paymentStatus switch
+        {
+            PaymentStatus.Pending => "Payment is pending. Waiting for payOS webhook.",
+            PaymentStatus.Cancelled => "Payment was cancelled.",
+            PaymentStatus.Failed => "Payment failed.",
+            PaymentStatus.Refunded => "Payment was refunded.",
+            _ => "Payment status is unavailable.",
         };
     }
 }
