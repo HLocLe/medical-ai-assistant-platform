@@ -43,15 +43,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<LabIndicatorAdviceCache> LabIndicatorAdviceCaches => Set<LabIndicatorAdviceCache>();
 
+    public DbSet<IcdChapter> IcdChapters => Set<IcdChapter>();
+
+    public DbSet<ClinicalQuestion> ClinicalQuestions => Set<ClinicalQuestion>();
+
+    public DbSet<SessionClinicalQuestionAnswer> SessionClinicalQuestionAnswers => Set<SessionClinicalQuestionAnswer>();
+
     public DbSet<AIAnalysis> AIAnalyses => Set<AIAnalysis>();
 
     public DbSet<AISystemConfig> AISystemConfigs => Set<AISystemConfig>();
-
-    public DbSet<KnowledgeSource> KnowledgeSources => Set<KnowledgeSource>();
-
-    public DbSet<KnowledgeDocument> KnowledgeDocuments => Set<KnowledgeDocument>();
-
-    public DbSet<KnowledgeChunk> KnowledgeChunks => Set<KnowledgeChunk>();
 
     public DbSet<UserMedication> UserMedications => Set<UserMedication>();
 

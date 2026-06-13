@@ -1,5 +1,5 @@
-using MedMateAI.Domain.Enums;
 using MedMateAI.Infrastructure.Identity;
+using MedMateAI.Domain.Enums;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -73,7 +73,6 @@ public static class IdentitySeeder
             if (createResult.Succeeded)
             {
                 await userManager.AddToRoleAsync(doctorUser, "Doctor");
-
             }
         }
     }

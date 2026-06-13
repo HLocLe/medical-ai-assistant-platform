@@ -16,7 +16,10 @@ using MedMateAI.Infrastructure.Repositories;
 using MedMateAI.Infrastructure.Email.Brevo;
 using MedMateAI.Infrastructure.Email.Brevo.Options;
 using MedMateAI.Infrastructure.AI;
+using MedMateAI.Infrastructure.AI.Options;
 using MedMateAI.Infrastructure.Payments.PayOS;
+using MedMateAI.Infrastructure.Translation;
+using MedMateAI.Infrastructure.Translation.Options;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -48,6 +51,8 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IMedicalDepartmentService, MedicalDepartmentService>();
+        services.AddScoped<IIcdChapterService, IcdChapterService>();
+        services.AddScoped<IClinicalQuestionService, ClinicalQuestionService>();
         services.AddScoped<IMedicalFacilityService, MedicalFacilityService>();
         services.AddScoped<IFacilityDepartmentService, FacilityDepartmentService>();
         services.AddScoped<IDoctorService, DoctorService>();
@@ -64,11 +69,18 @@ public static class DependencyInjection
         services.AddScoped<IUserSubscriptionService, UserSubscriptionService>();
         services.AddScoped<IPaymentService, PaymentService>();
 
+        //
         services.Configure<PayOSOptions>(configuration.GetSection("PayOS"));
+       
+        //
+        services.Configure<AzureTranslatorOptions>(configuration.GetSection(AzureTranslatorOptions.SectionName));
+
         services.Configure<BrevoOptions>(configuration.GetSection(BrevoOptions.SectionName));
         services.Configure<FrontendOptions>(configuration.GetSection(FrontendOptions.SectionName));
       
         
+        //
+        services.Configure<MedGemmaOptions>(configuration.GetSection(MedGemmaOptions.SectionName));
         //
         services.AddHttpContextAccessor();
 
@@ -85,9 +97,23 @@ public static class DependencyInjection
         {
             client.Timeout = TimeSpan.FromSeconds(30);
         });
+
+        //
         services.AddScoped<IEmailSender>(sp => sp.GetRequiredService<BrevoEmailSender>());
         services.AddScoped<IEmailOtpSender>(sp => sp.GetRequiredService<BrevoEmailSender>());
         services.AddHttpClient<IAIChatProvider, OpenRouterChatProvider>();
+
+        //
+        services.AddHttpClient<IMedGemmaChatService, MedGemmaChatService>(client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(5);
+        });
+
+        //
+        services.AddHttpClient<ITranslationService, AzureTranslationService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
 
         // 
         services.AddIdentityCore<ApplicationUser>(options =>
@@ -119,7 +145,7 @@ public static class DependencyInjection
            "JWT secret must be at least 32 chars.")
          .ValidateOnStart();
         
-        services.AddAutoMapper(cfg => { }, typeof(UserMappingProfile), typeof(PatientProfileMappingProfile));
+        services.AddAutoMapper(cfg => { }, typeof(UserMappingProfile), typeof(PatientProfileMappingProfile), typeof(IcdChapterMappingProfile), typeof(ClinicalQuestionMappingProfile), typeof(MedicalFacilityMappingProfile), typeof(SymptomAnalysisMappingProfile));
 
         services.AddAuthentication(options =>
             {

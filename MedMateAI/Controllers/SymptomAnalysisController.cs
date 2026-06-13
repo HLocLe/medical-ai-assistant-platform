@@ -1,9 +1,10 @@
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Requests;
-using MedMateAI.Application.DTOs.SymptomAnalysis.Responses;
+using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
+using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
 using MedMateAI.Application.IService;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 
 namespace MedMateAI.Controllers;
 
@@ -14,48 +15,47 @@ public sealed class SymptomAnalysisController : ControllerBase
     private const int MaxMessageLength = 2000;
 
     private readonly ISymptomAnalysisService _symptomAnalysisService;
-    private readonly ILogger<SymptomAnalysisController> _logger;
+    private readonly IUserService _userService;
 
     public SymptomAnalysisController(
         ISymptomAnalysisService symptomAnalysisService,
-        ILogger<SymptomAnalysisController> logger)
+        IUserService userService)
     {
         _symptomAnalysisService = symptomAnalysisService;
-        _logger = logger;
+        _userService = userService;
     }
 
-    [HttpPost("analyze")]
-    [ProducesResponseType(typeof(ApiResponse<SymptomAnalysisResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse<SymptomAnalysisResponse>), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ApiResponse<SymptomAnalysisResponse>), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> Analyze(
-        [FromBody] AnalyzeSymptomsRequest request,
+    [HttpPost("suggest-clinical-questions")]
+    [ProducesResponseType(typeof(ApiResponse<SuggestClinicalQuestionsResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<SuggestClinicalQuestionsResponse>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SuggestClinicalQuestions(
+        [FromBody] SuggestClinicalQuestionRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request is null || string.IsNullOrWhiteSpace(request.Message))
+        if (request is null || string.IsNullOrWhiteSpace(request.UserInput))
         {
-            return BadRequest(new ApiResponse<SymptomAnalysisResponse>
+            return BadRequest(new ApiResponse<SuggestClinicalQuestionsResponse>
             {
                 Success = false,
-                Message = "Analyze symptoms failed.",
-                Errors = new List<string> { "Message is required." },
+                Message = "Suggest clinical questions failed.",
+                Errors = new List<string> { "User input is required." },
             });
         }
 
-        if (request.Message.Trim().Length > MaxMessageLength)
+        if (request.UserInput.Trim().Length > MaxMessageLength)
         {
-            return BadRequest(new ApiResponse<SymptomAnalysisResponse>
+            return BadRequest(new ApiResponse<SuggestClinicalQuestionsResponse>
             {
                 Success = false,
-                Message = "Analyze symptoms failed.",
-                Errors = new List<string> { $"Message must be {MaxMessageLength} characters or fewer." },
+                Message = "Suggest clinical questions failed.",
+                Errors = new List<string> { $"User input must be {MaxMessageLength} characters or fewer." },
             });
         }
 
         try
         {
-            var data = await _symptomAnalysisService.AnalyzeAsync(request, cancellationToken);
-            return Ok(new ApiResponse<SymptomAnalysisResponse>
+            var data = await _symptomAnalysisService.SuggestClinicalQuestionAsync(request, cancellationToken);
+            return Ok(new ApiResponse<SuggestClinicalQuestionsResponse>
             {
                 Success = true,
                 Message = "OK",
@@ -64,30 +64,96 @@ public sealed class SymptomAnalysisController : ControllerBase
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new ApiResponse<SymptomAnalysisResponse>
+            return BadRequest(new ApiResponse<SuggestClinicalQuestionsResponse>
             {
                 Success = false,
-                Message = "Analyze symptoms failed.",
+                Message = "Suggest clinical questions failed.",
+                Errors = new List<string> { ex.Message },
+            });
+        }
+    }
+
+    [HttpPost("submit-clinical-question-answers")]
+    [ProducesResponseType(typeof(ApiResponse<ClinicalQuestionAnswersResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<ClinicalQuestionAnswersResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<ClinicalQuestionAnswersResponse>), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> SubmitClinicalQuestionAnswers(
+        [FromBody] SubmitClinicalQuestionAnswersRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null || request.SessionId == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<ClinicalQuestionAnswersResponse>
+            {
+                Success = false,
+                Message = "Submit clinical question answers failed.",
+                Errors = new List<string> { "Session id is required." },
+            });
+        }
+
+        try
+        {
+            var data = await _symptomAnalysisService.SubmitClinicalQuestionAnswersAsync(request, cancellationToken);
+            return Ok(new ApiResponse<ClinicalQuestionAnswersResponse>
+            {
+                Success = true,
+                Message = "OK",
+                Data = data,
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiResponse<ClinicalQuestionAnswersResponse>
+            {
+                Success = false,
+                Message = "Submit clinical question answers failed.",
                 Errors = new List<string> { ex.Message },
             });
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Symptom analysis could not complete.");
-
-            return StatusCode(StatusCodes.Status500InternalServerError, new ApiResponse<SymptomAnalysisResponse>
+            return StatusCode(StatusCodes.Status502BadGateway, new ApiResponse<ClinicalQuestionAnswersResponse>
             {
                 Success = false,
-                Message = "Symptom analysis is unavailable.",
-                Errors = new List<string>
-                {
-                    "Unable to analyze symptoms at this time. Please try again later.",
-                },
+                Message = "MedGemma analysis failed.",
+                Errors = new List<string> { ex.Message },
             });
         }
     }
 
-    [HttpGet("{sessionId:guid}")]
+    [HttpGet("my-sessions")]
+    [Authorize]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMySessions(
+        [FromQuery] PaginationQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>
+            {
+                Success = false,
+                Message = "Unauthorized",
+            });
+        }
+
+        var data = await _symptomAnalysisService.GetSessionsByUserIdAsync(
+            currentUser.Id,
+            query.PageNumber,
+            query.PageSize,
+            cancellationToken);
+
+        return Ok(new ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
+    [HttpGet("{sessionId}")]
     [ProducesResponseType(typeof(ApiResponse<SymptomAnalysisResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<SymptomAnalysisResponse>), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(

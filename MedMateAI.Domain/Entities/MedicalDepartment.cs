@@ -6,7 +6,9 @@ public sealed class MedicalDepartment : BaseEntity
 
     public string? Description { get; set; }
 
+    public string? ChapterCode { get; set; }
 
+    public IcdChapter? IcdChapter { get; set; }
 
     public ICollection<FacilityDepartment> FacilityDepartments { get; set; } = new List<FacilityDepartment>();
 

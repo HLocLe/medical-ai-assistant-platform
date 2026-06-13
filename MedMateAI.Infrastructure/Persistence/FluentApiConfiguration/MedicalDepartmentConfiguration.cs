@@ -12,5 +12,17 @@ public sealed class MedicalDepartmentConfiguration : IEntityTypeConfiguration<Me
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("DepartmentId").ValueGeneratedOnAdd();
+
+        builder.Property(x => x.ChapterCode)
+            .HasMaxLength(10);
+
+        builder.HasIndex(x => x.ChapterCode);
+
+        builder.HasOne(x => x.IcdChapter)
+            .WithMany(x => x.MedicalDepartments)
+            .HasForeignKey(x => x.ChapterCode)
+            .HasPrincipalKey(x => x.ChapterCode)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

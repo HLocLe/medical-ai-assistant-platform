@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AutoMapper;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.MedicalFacilities.Requests;
 using MedMateAI.Application.DTOs.MedicalFacilities.Responses;
@@ -22,13 +23,16 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDistributedCache _cache;
+    private readonly IMapper _mapper;
 
     public MedicalFacilityService(
         IUnitOfWork unitOfWork,
-        IDistributedCache cache)
+        IDistributedCache cache,
+        IMapper mapper)
     {
         _unitOfWork = unitOfWork;
         _cache = cache;
+        _mapper = mapper;
     }
 
     public async Task<PagedResponse<MedicalFacilityResponse>> ListMedicalFacilitiesAsync(
@@ -51,7 +55,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             PageSize = paged.PageSize,
             TotalCount = paged.TotalCount,
             TotalPages = paged.TotalPages,
-            Items = paged.Items.Select(MapToResponse).ToList(),
+            Items = paged.Items.Select(facility => _mapper.Map<MedicalFacilityResponse>(facility)).ToList(),
         };
     }
 
@@ -79,7 +83,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             search,
             cancellationToken);
 
-        var response = entities.Select(MapToResponse).ToList();
+        var response = entities.Select(facility => _mapper.Map<MedicalFacilityResponse>(facility)).ToList();
 
         if (shouldUseCache)
         {
@@ -119,7 +123,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             return null;
         }
 
-        var response = MapToResponse(entity);
+        var response = _mapper.Map<MedicalFacilityResponse>(entity);
         await _cache.SetStringAsync(
             cacheKey,
             JsonSerializer.Serialize(response),
@@ -225,7 +229,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         await InvalidateMedicalFacilityCachesAsync(entity.Id, cancellationToken);
 
         var created = await _unitOfWork.MedicalFacilities.GetByIdWithDepartmentsAsync(entity.Id, cancellationToken);
-        return (true, Array.Empty<string>(), MapToResponse(created ?? entity));
+        return (true, Array.Empty<string>(), _mapper.Map<MedicalFacilityResponse>(created ?? entity));
     }
 
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, MedicalFacilityResponse? Data)> UpdateMedicalFacilityAsync(
@@ -387,7 +391,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         await InvalidateMedicalFacilityCachesAsync(id, cancellationToken);
 
         var updated = await _unitOfWork.MedicalFacilities.GetByIdWithDepartmentsAsync(id, cancellationToken);
-        return (true, false, Array.Empty<string>(), MapToResponse(updated ?? entity));
+        return (true, false, Array.Empty<string>(), _mapper.Map<MedicalFacilityResponse>(updated ?? entity));
     }
 
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, MedicalFacilityResponse? Data)> UpdateMedicalFacilityStatusAsync(
@@ -419,7 +423,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         await InvalidateMedicalFacilityCachesAsync(id, cancellationToken);
 
         var updated = await _unitOfWork.MedicalFacilities.GetByIdWithDepartmentsAsync(id, cancellationToken);
-        return (true, false, Array.Empty<string>(), MapToResponse(updated ?? entity));
+        return (true, false, Array.Empty<string>(), _mapper.Map<MedicalFacilityResponse>(updated ?? entity));
     }
 
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors)> SoftDeleteMedicalFacilityAsync(
@@ -554,37 +558,6 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             cancellationToken: cancellationToken);
 
         return duplicated is not null;
-    }
-
-    private static MedicalFacilityResponse MapToResponse(MedicalFacility entity)
-    {
-        var departments = entity.FacilityDepartments
-            .Where(x => !x.IsDeleted && x.Department is not null && !x.Department.IsDeleted)
-            .OrderBy(x => (x.Department.DepartmentName ?? string.Empty).ToLower())
-            .Select(x => new MedicalFacilityDepartmentResponse
-            {
-                DepartmentId = x.DepartmentId,
-                DepartmentName = x.Department.DepartmentName,
-                Description = x.Department.Description,
-            })
-            .ToList();
-
-        return new MedicalFacilityResponse
-        {
-            Id = entity.Id,
-            FacilityName = entity.FacilityName,
-            Address = entity.Address,
-            Latitude = entity.Latitude,
-            Longitude = entity.Longitude,
-            Phone = entity.Phone,
-            Website = entity.Website,
-            OpeningHours = entity.OpeningHours,
-            FacilityType = entity.FacilityType,
-            IsActive = entity.IsActive,
-            Departments = departments,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt,
-        };
     }
 
     private async Task InvalidateMedicalFacilityCachesAsync(Guid id, CancellationToken cancellationToken)
