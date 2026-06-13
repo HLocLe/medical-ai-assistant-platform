@@ -790,7 +790,9 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
     
-     private static readonly Regex MatchingPunctuationRegex = new(@"[.,?!;:]", RegexOptions.Compiled);
-     private static readonly Regex MatchingWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex MatchingPunctuationRegex =
+    new(@"[.,?!;:]", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+     private static readonly Regex MatchingWhitespaceRegex =
+    new(@"\s+", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 }
 
