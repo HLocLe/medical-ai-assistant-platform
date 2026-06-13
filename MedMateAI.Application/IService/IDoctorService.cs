@@ -17,7 +17,9 @@ public interface IDoctorService
         DepartmentRole? departmentRole = null,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<DoctorResponse>> ListActiveDoctorsAsync(
+    Task<PagedResponse<DoctorResponse>> ListActiveDoctorsAsync(
+        int pageNumber,
+        int pageSize,
         Guid? facilityId = null,
         Guid? departmentId = null,
         string? search = null,

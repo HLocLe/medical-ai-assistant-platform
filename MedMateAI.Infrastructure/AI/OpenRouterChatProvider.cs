@@ -4,7 +4,7 @@ using System.Text.Json;
 using MedMateAI.Application.DTOs.WebChatbot.Requests;
 using MedMateAI.Application.DTOs.WebChatbot.Responses;
 using MedMateAI.Application.IService;
-using MedMateAI.Infrastructure.AI.DTOs;
+using MedMateAI.Infrastructure.AI.DTOs.OpenRouter;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 

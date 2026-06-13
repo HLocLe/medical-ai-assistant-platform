@@ -1,144 +1,50 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using MedMateAI.Application.DTOs.AIConfigs.Responses;
+using System.Text.RegularExpressions;
+using AutoMapper;
+using MedMateAI.Application.DTOs.Common;
+using MedMateAI.Application.DTOs.MedicalFacilities.Responses;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Requests;
-using MedMateAI.Application.DTOs.SymptomAnalysis.Responses;
-using MedMateAI.Application.DTOs.WebChatbot.Requests;
+using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
+using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
+using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.MedGemma;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Persistence;
-using Microsoft.Extensions.Logging;
 
 namespace MedMateAI.Application.Service;
 
 public sealed class SymptomAnalysisService : ISymptomAnalysisService
 {
-    private const string TaskType = "SymptomAnalysis";
-    private const decimal DefaultTemperature = 0.2m;
-    private const int DefaultMaxTokens = 1500;
-
-    private static readonly JsonSerializerOptions AiJsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        NumberHandling = JsonNumberHandling.AllowReadingFromString,
-    };
     private const int MaxMessageLength = 2000;
 
-    private const string FallbackSystemPrompt = """
-        Ban la tro ly y te tham khao cua MedMateAI. Nhiem vu: phan tich mo ta trieu chung cua nguoi dung va goi y khoa kham phu hop.
-
-        Quy tac:
-        - Khong chan doan benh, khong ke don thuoc, khong thay the bac si.
-        - Chi goi y khoa tu danh sach departments duoc cung cap.
-        - Neu trieu chung nghiem trong, dat isEmergencySuggested = true va khuyen den cap cuu.
-        - Tra loi bang tieng Viet.
-        - Bat buoc tra JSON hop le theo schema, khong bọc markdown.
-        """;
-
-    private static readonly JsonSerializerOptions PromptJsonOptions = new()
+    private static readonly JsonSerializerOptions DiagnosisJsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
     };
 
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IAIConfigService _aiConfigService;
-    private readonly IAIChatProvider _aiChatProvider;
     private readonly IUserService _userService;
-    private readonly ILogger<SymptomAnalysisService> _logger;
+    private readonly ITranslationService _translationService;
+    private readonly IMedGemmaChatService _medGemmaChatService;
+    private readonly IMapper _mapper;
 
     public SymptomAnalysisService(
         IUnitOfWork unitOfWork,
-        IAIConfigService aiConfigService,
-        IAIChatProvider aiChatProvider,
         IUserService userService,
-        ILogger<SymptomAnalysisService> logger)
+        ITranslationService translationService,
+        IMedGemmaChatService medGemmaChatService,
+        IMapper mapper)
     {
         _unitOfWork = unitOfWork;
-        _aiConfigService = aiConfigService;
-        _aiChatProvider = aiChatProvider;
         _userService = userService;
-        _logger = logger;
+        _translationService = translationService;
+        _medGemmaChatService = medGemmaChatService;
+        _mapper = mapper;
     }
 
-    public async Task<SymptomAnalysisResponse> AnalyzeAsync(
-        AnalyzeSymptomsRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        if (request is null)
-        {
-            throw new ArgumentException("Request is required.");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.Message))
-        {
-            throw new ArgumentException("Message is required.");
-        }
-
-        var trimmedMessage = request.Message.Trim();
-
-        if (trimmedMessage.Length > MaxMessageLength)
-        {
-            throw new ArgumentException($"Message must be {MaxMessageLength} characters or fewer.");
-        }
-
-        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
-
-        var utcNow = DateTime.UtcNow;
-
-        var session = new SymptomAnalysisSession
-        {
-            Id = Guid.NewGuid(),
-            UserId = currentUser?.Id,
-            InputText = trimmedMessage,
-            Status = SymptomAnalysisSessionStatus.Processing,
-            DisclaimerShown = request.DisclaimerShown,
-            CreatedAt = utcNow,
-        };
-
-        _unitOfWork.SymptomAnalysisSessions.Add(session);
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        try
-        {
-            var departments = await LoadActiveDepartmentsAsync(cancellationToken);
-            var aiConfig = await _aiConfigService.GetActiveAIConfigByTaskTypeAsync(TaskType, cancellationToken);
-            var resolvedConfig = ResolveConfig(aiConfig);
-
-            var aiRequest = new AIProviderChatRequest
-            {
-                SystemPrompt = resolvedConfig.SystemPrompt,
-                UserMessage = BuildUserPrompt(trimmedMessage, departments),
-                Model = resolvedConfig.Model,
-                Temperature = resolvedConfig.Temperature,
-                MaxTokens = resolvedConfig.MaxTokens,
-            };
-
-            var aiResult = await _aiChatProvider.GenerateAsync(aiRequest, cancellationToken);
-            if (!TryParseAiJsonResponse(aiResult.Content, out var aiJson))
-            {
-                await MarkSessionFailedAsync(session, cancellationToken);
-                throw new InvalidOperationException("Unable to parse AI symptom analysis response.");
-            }
-
-            await PersistAnalysisResultsAsync(session, aiJson, departments, utcNow, cancellationToken);
-
-            return await BuildSessionResponseAsync(session, cancellationToken);
-        }
-        catch (InvalidOperationException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Symptom analysis failed for session {SessionId}.", session.Id);
-            await MarkSessionFailedAsync(session, cancellationToken);
-            throw;
-        }
-    }
-
+    // 
     public async Task<SymptomAnalysisResponse?> GetSessionByIdAsync(
         Guid sessionId,
         CancellationToken cancellationToken = default)
@@ -157,113 +63,635 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         return await BuildSessionResponseAsync(session, cancellationToken);
     }
 
-    private async Task<IReadOnlyList<MedicalDepartment>> LoadActiveDepartmentsAsync(
-        CancellationToken cancellationToken)
+    // 
+    public async Task<PagedResponse<SymptomAnalysisSessionSummaryResponse>> GetSessionsByUserIdAsync(
+        Guid userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
     {
-        var all = await _unitOfWork.MedicalDepartments.GetAllAsync(cancellationToken);
-        return all
-            .Where(d => !d.IsDeleted)
-            .OrderBy(d => d.DepartmentName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        if (userId == Guid.Empty)
+        {
+            return new PagedResponse<SymptomAnalysisSessionSummaryResponse>();
+        }
+
+        var paged = await _unitOfWork.SymptomAnalysisSessions.GetPagedByUserIdAsync(
+            userId,
+            pageNumber,
+            pageSize,
+            cancellationToken);
+
+        return new PagedResponse<SymptomAnalysisSessionSummaryResponse>
+        {
+            PageNumber = paged.PageNumber,
+            PageSize = paged.PageSize,
+            TotalCount = paged.TotalCount,
+            TotalPages = paged.TotalPages,
+            Items = paged.Items
+                .Select(session => new SymptomAnalysisSessionSummaryResponse
+                {
+                    SessionId = session.Id,
+                    InputText = session.InputText,
+                    SeverityLevel = session.SeverityLevel,
+                    Status = session.Status,
+                    CreatedAt = session.CreatedAt,
+                })
+                .ToList(),
+        };
     }
 
-    private async Task PersistAnalysisResultsAsync(
-        SymptomAnalysisSession session,
-        SymptomAnalysisAiJsonResponse aiJson,
-        IReadOnlyList<MedicalDepartment> departments,
-        DateTime utcNow,
-        CancellationToken cancellationToken)
+    // 
+    public async Task<SuggestClinicalQuestionsResponse> SuggestClinicalQuestionAsync(
+     SuggestClinicalQuestionRequest request,
+     CancellationToken cancellationToken = default)
     {
-        session.SeverityLevel = NormalizeTextAllowEmpty(aiJson.SeverityLevel);
-        session.Status = SymptomAnalysisSessionStatus.Completed;
-        session.CompletedAt = utcNow;
-        session.UpdatedAt = utcNow;
-        _unitOfWork.SymptomAnalysisSessions.Update(session);
-
-        foreach (var symptom in aiJson.Symptoms)
+        if (request is null || string.IsNullOrWhiteSpace(request.UserInput))
         {
-            if (string.IsNullOrWhiteSpace(symptom.SymptomName)
-                && string.IsNullOrWhiteSpace(symptom.ExtractedText))
+            return new SuggestClinicalQuestionsResponse();
+        }
+
+        var trimmedInput = request.UserInput.Trim();
+
+        if (trimmedInput.Length > MaxMessageLength)
+        {
+            throw new ArgumentException($"User input must be {MaxMessageLength} characters or fewer.");
+        }
+
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+
+
+        var session = new SymptomAnalysisSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = currentUser?.Id,
+            InputText = trimmedInput,
+            Status = SymptomAnalysisSessionStatus.Processing,
+            DisclaimerShown = true,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        _unitOfWork.SymptomAnalysisSessions.Add(session);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var normalizedInput = NormalizeMatchingText(trimmedInput);
+
+        if (string.IsNullOrEmpty(normalizedInput))
+        {
+            return new SuggestClinicalQuestionsResponse
+            {
+                SessionId = session.Id,
+            };
+        }
+
+        var inputWords = normalizedInput
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .ToList();
+
+
+        var activeChapters = await _unitOfWork.IcdChapters.GetActiveChaptersAsync(cancellationToken);
+
+        var chapterMatches = new Dictionary<Guid, (int TotalScore, List<string> MatchedKeywords, string ChapterCode)>();
+
+        foreach (var chapter in activeChapters)
+        {
+            if (chapter.KeywordWeights is null || chapter.KeywordWeights.Count == 0) continue;
+
+            var totalScore = 0;
+
+            var matchedKeywords = new List<string>();
+
+            foreach (var (keyword, weight) in chapter.KeywordWeights)
+            {
+                if (string.IsNullOrWhiteSpace(keyword)) continue;
+
+                var normalizedKeyword = NormalizeMatchingText(keyword);
+
+                if (normalizedKeyword is null) continue;
+
+                var keywordTokens = normalizedKeyword.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+                if (keywordTokens.Length == 0) continue;
+
+                bool isMatch;
+
+                if (keywordTokens.Length == 1)
+                {
+                    isMatch = normalizedInput.Contains(normalizedKeyword, StringComparison.Ordinal);
+                }
+
+                else if (keywordTokens.Length == 2)
+                {
+                    isMatch = Check2WordDistanceByArray(
+                        inputWords,
+                        keywordTokens[0],
+                        keywordTokens[1],
+                        maxDistance: 2);
+                }
+                else if (keywordTokens.Length == 3)
+                {
+                    isMatch = Check3WordDistanceByArray(
+                        inputWords,
+                        keywordTokens[0],
+                        keywordTokens[1],
+                        keywordTokens[2],
+                        maxDistance: 2);
+
+                }
+                else
+                {
+                    continue;
+                }
+
+                if (isMatch)
+                {
+                    matchedKeywords.Add(keyword);
+                    totalScore += weight;
+                }
+            }
+
+            if (totalScore > 0)
+            {
+                chapterMatches[chapter.Id] = (totalScore, matchedKeywords, chapter.ChapterCode);
+            }
+        }
+
+        if (chapterMatches.Count == 0)
+        {
+            return new SuggestClinicalQuestionsResponse
+            {
+                SessionId = session.Id,
+            };
+        }
+
+        var topChapter = chapterMatches
+        .OrderByDescending(x => x.Value.TotalScore)
+        .ThenBy(x => x.Value.ChapterCode)
+        .First();
+
+        var targetChapterIds = new List<Guid> { topChapter.Key };
+
+
+        var matchedQuestions = await _unitOfWork.ClinicalQuestions
+            .GetQuestionsByChapterIdsAsync(targetChapterIds, cancellationToken);
+
+
+        var results = new List<SuggestedClinicalQuestionResponse>(matchedQuestions.Count);
+
+        foreach (var question in matchedQuestions)
+        {
+            if (question.ChapterId is null || !chapterMatches.TryGetValue(question.ChapterId.Value, out var chapterMatch))
             {
                 continue;
             }
 
+            results.Add(new SuggestedClinicalQuestionResponse
+            {
+                QuestionId = question.Id,
+                QuestionVi = question.QuestionVi,
+                ChapterId = question.ChapterId,
+                ChapterCode = question.ChapterCode ?? chapterMatch.ChapterCode,
+                TotalScore = chapterMatch.TotalScore,
+                MatchedKeywords = chapterMatch.MatchedKeywords,
+            });
+
+            _unitOfWork.SessionClinicalQuestionAnswers.Add(new SessionClinicalQuestionAnswer
+            {
+                Id = Guid.NewGuid(),
+                SymptomAnalysisSessionId = session.Id,
+                ClinicalQuestionId = question.Id,
+                Answer = false,
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+
+        var orderedResults = results
+            .OrderByDescending(result => result.TotalScore)
+            .ThenBy(result => result.ChapterCode)
+            .ThenBy(result => result.QuestionVi)
+            .ToList();
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new SuggestClinicalQuestionsResponse
+        {
+            SessionId = session.Id,
+            Questions = orderedResults,
+        };
+    }
+
+    // 
+    public async Task<ClinicalQuestionAnswersResponse> SubmitClinicalQuestionAnswersAsync(
+        SubmitClinicalQuestionAnswersRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null)
+        {
+            throw new ArgumentException("Request is required.");
+        }
+
+        if (request.SessionId == Guid.Empty)
+        {
+            throw new ArgumentException("Session id is required.");
+        }
+
+        var session = await _unitOfWork.SymptomAnalysisSessions.GetByIdAsync(request.SessionId, cancellationToken);
+
+        if (session is null || session.IsDeleted)
+        {
+            throw new ArgumentException("Symptom analysis session not found.");
+        }
+
+        if (string.IsNullOrWhiteSpace(session.InputText))
+        {
+            throw new ArgumentException("Session input text is missing.");
+        }
+
+        var existingAnswers = await _unitOfWork.SessionClinicalQuestionAnswers
+            .GetTrackedBySessionIdAsync(session.Id, cancellationToken);
+
+        if (existingAnswers.Count == 0)
+        {
+            throw new ArgumentException("No clinical questions found for this session.");
+        }
+
+        var trueQuestionIds = (request.Answers ?? [])
+            .Where(answer => answer.QuestionId != Guid.Empty && answer.Answer)
+            .Select(answer => answer.QuestionId)
+            .ToHashSet();
+
+
+
+        foreach (var existingAnswer in existingAnswers)
+        {
+            existingAnswer.Answer = trueQuestionIds.Contains(existingAnswer.ClinicalQuestionId);
+            existingAnswer.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var results = _mapper.Map<List<ClinicalQuestionAnswerResult>>(existingAnswers);
+
+        var bayesianPrompt = await BuildMedGemmaBayesianPromptAsync(
+            session.InputText,
+            existingAnswers,
+            cancellationToken);
+
+        var analysis = await ExecuteMedGemmaAnalysisAsync(session, bayesianPrompt, cancellationToken);
+
+
+        return new ClinicalQuestionAnswersResponse
+        {
+            SessionId = session.Id,
+            UserInput = session.InputText,
+            Answers = results,
+            Analysis = analysis,
+        };
+    }
+
+    // private method cho SubmitClinicalQuestionAnswersAsync
+    private async Task<SymptomAnalysisAnalyzeResponse> ExecuteMedGemmaAnalysisAsync(
+        SymptomAnalysisSession session,
+        string bayesianPrompt,
+        CancellationToken cancellationToken)
+    {
+        MedGemmaChatResult aiResult;
+
+        try
+        {
+            aiResult = await _medGemmaChatService.GenerateAsync(bayesianPrompt, cancellationToken);
+        }
+        catch (Exception)
+        {
+            session.Status = SymptomAnalysisSessionStatus.Failed;
+            session.UpdatedAt = DateTime.UtcNow;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            throw;
+        }
+
+        if (!TryParseDiagnosesJson(aiResult.Content, out var parsedDiagnoses))
+        {
+            session.Status = SymptomAnalysisSessionStatus.Failed;
+            session.UpdatedAt = DateTime.UtcNow;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            throw new InvalidOperationException("Failed to parse MedGemma diagnoses JSON response.");
+        }
+
+        var pB = parsedDiagnoses.Sum(d => d.PA * d.PBGivenA);
+        var diagnoses = parsedDiagnoses
+            .Select(d => new BayesianDiagnosisResponse
+            {
+                DiseaseName = d.DiseaseName,
+                Icd10Code = d.Icd10Code,
+                PA = d.PA,
+                PBGivenA = d.PBGivenA,
+                PAGivenB = pB > 0 ? (d.PA * d.PBGivenA) / pB : 0,
+                ClinicalReasoning = d.ClinicalReasoning,
+            })
+            .OrderByDescending(d => d.PAGivenB)
+            .Select((d, index) =>
+            {
+                d.Rank = index + 1;
+                return d;
+            })
+            .ToList();
+
+        var primaryDiagnosis = diagnoses.FirstOrDefault();
+        var chapterCode = ExtractIcdChapterCode(primaryDiagnosis?.Icd10Code);
+
+        var (recommendedDepartment, recommendedFacilities) =
+            await ResolveDepartmentAndFacilitiesAsync(
+                primaryDiagnosis,
+                chapterCode,
+                cancellationToken);
+
+        if (recommendedDepartment is not null)
+        {
+            await SaveDepartmentRecommendationAsync(session.Id, recommendedDepartment, cancellationToken);
+        }
+
+        await ReplaceSessionSymptomsAsync(session.Id, diagnoses, cancellationToken);
+
+        session.Status = SymptomAnalysisSessionStatus.Completed;
+        session.CompletedAt = DateTime.UtcNow;
+        session.UpdatedAt = DateTime.UtcNow;
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new SymptomAnalysisAnalyzeResponse
+        {
+            SessionId = session.Id,
+            Status = session.Status,
+            Model = aiResult.Model,
+            Diagnoses = diagnoses,
+            PrimaryDiagnosis = primaryDiagnosis,
+            RecommendedDepartment = recommendedDepartment,
+            RecommendedFacilities = recommendedFacilities,
+        };
+    }
+
+    private async Task<(RecommendedDepartmentResponse? Department, IReadOnlyList<MedicalFacilityResponse> Facilities)>
+        ResolveDepartmentAndFacilitiesAsync(
+            BayesianDiagnosisResponse? primaryDiagnosis,
+            string? chapterCode,
+            CancellationToken cancellationToken)
+    {
+        if (primaryDiagnosis is null || string.IsNullOrWhiteSpace(chapterCode))
+        {
+            return (null, Array.Empty<MedicalFacilityResponse>());
+        }
+
+        var department = await _unitOfWork.MedicalDepartments.GetActiveByChapterCodeAsync(
+            chapterCode,
+            cancellationToken);
+        if (department is null)
+        {
+            return (null, Array.Empty<MedicalFacilityResponse>());
+        }
+
+        var recommendedDepartment = new RecommendedDepartmentResponse
+        {
+            DepartmentId = department.Id,
+            DepartmentName = department.DepartmentName,
+            IcdChapterCode = chapterCode,
+            ConfidenceScore = primaryDiagnosis.PAGivenB,
+            Reason = primaryDiagnosis.DiseaseName,
+            PriorityRank = 1,
+            IsEmergencySuggested = false,
+        };
+
+        var facilities = await _unitOfWork.MedicalFacilities.GetActiveWithDepartmentsAsync(
+            departmentId: department.Id,
+            search: null,
+            cancellationToken: cancellationToken);
+
+        var facilityResponses = facilities
+            .Select(facility => _mapper.Map<MedicalFacilityResponse>(facility))
+            .ToList();
+
+        return (recommendedDepartment, facilityResponses);
+    }
+
+    private async Task SaveDepartmentRecommendationAsync(
+        Guid sessionId,
+        RecommendedDepartmentResponse recommendation,
+        CancellationToken cancellationToken)
+    {
+        var existingRecommendations = await _unitOfWork.DepartmentRecommendations.GetPagedAsync(
+            1,
+            50,
+            recommendationEntity => !recommendationEntity.IsDeleted
+                && recommendationEntity.SymptomAnalysisSessionId == sessionId,
+            query => query.OrderBy(recommendationEntity => recommendationEntity.PriorityRank),
+            cancellationToken: cancellationToken);
+
+        foreach (var existingRecommendation in existingRecommendations.Items)
+        {
+            existingRecommendation.IsDeleted = true;
+            existingRecommendation.UpdatedAt = DateTime.UtcNow;
+        }
+
+        _unitOfWork.DepartmentRecommendations.Add(new DepartmentRecommendation
+        {
+            Id = Guid.NewGuid(),
+            SymptomAnalysisSessionId = sessionId,
+            DepartmentId = recommendation.DepartmentId,
+            ConfidenceScore = recommendation.ConfidenceScore,
+            Reason = recommendation.Reason,
+            PriorityRank = recommendation.PriorityRank,
+            IsEmergencySuggested = recommendation.IsEmergencySuggested,
+            CreatedAt = DateTime.UtcNow,
+        });
+    }
+
+    private async Task<string> BuildMedGemmaBayesianPromptAsync(
+        string userInput,
+        IReadOnlyList<SessionClinicalQuestionAnswer> answers,
+        CancellationToken cancellationToken)
+    {
+        var translatedInput = await _translationService.TranslateToEnglishAsync(
+            userInput,
+            cancellationToken: cancellationToken);
+
+        var builder = new StringBuilder();
+
+        builder.AppendLine("You are a clinical decision support assistant.");
+        builder.AppendLine();
+        builder.AppendLine("Return STRICTLY valid JSON only.");
+        builder.AppendLine("Do not include markdown.");
+        builder.AppendLine("Do not include ```json.");
+        builder.AppendLine("Do not include explanation outside JSON.");
+        builder.AppendLine();
+        builder.AppendLine("Clinical task:");
+        builder.AppendLine("1. Identify the most likely differential diagnoses.");
+        builder.AppendLine("2. Provide the standard ICD-10 code for each disease.");
+        builder.AppendLine("3. Estimate two numeric probabilities for each disease:");
+        builder.AppendLine("   - p_A: prior probability of the disease in the general population.");
+        builder.AppendLine("   - p_B_given_A: probability of this exact symptom pattern given the disease.");
+        builder.AppendLine();
+        builder.AppendLine("Probability rules:");
+        builder.AppendLine("- p_A must be a numeric float between 0 and 1.");
+        builder.AppendLine("- p_B_given_A must be a numeric float between 0 and 1.");
+        builder.AppendLine("- Do NOT use placeholder values.");
+        builder.AppendLine("- Do NOT copy example probabilities.");
+        builder.AppendLine("- Do NOT use 0.01 as a default value.");
+        builder.AppendLine("- Do NOT assign the same probability to every disease.");
+        builder.AppendLine("- Use different probability values for different diseases.");
+        builder.AppendLine("- Common diseases should generally have higher p_A than rare diseases.");
+        builder.AppendLine("- Diseases that strongly match the patient's presenting symptoms should have higher p_B_given_A.");
+        builder.AppendLine("- Diseases contradicted by absent symptoms should have lower p_B_given_A.");
+        builder.AppendLine("- Return 3 to 5 diagnoses.");
+        builder.AppendLine();
+        builder.AppendLine("Patient:");
+        builder.AppendLine($"Symptoms: {translatedInput}");
+        builder.AppendLine();
+        builder.AppendLine("Interview:");
+
+        foreach (var answer in answers)
+        {
+            var label = string.IsNullOrWhiteSpace(answer.ClinicalQuestion?.EnglishPrefix)
+                ? "unspecified"
+                : answer.ClinicalQuestion.EnglishPrefix.Trim();
+
+            var response = answer.Answer ? "Yes" : "No";
+            builder.AppendLine($"- {label}: {response}");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("Output JSON schema:");
+        builder.AppendLine("diagnoses: array of diagnosis objects");
+        builder.AppendLine();
+        builder.AppendLine("Each diagnosis object must contain:");
+        builder.AppendLine("rank: integer");
+        builder.AppendLine("disease_name: string");
+        builder.AppendLine("icd10_code: string");
+        builder.AppendLine("p_A: numeric float");
+        builder.AppendLine("p_B_given_A: numeric float");
+        builder.AppendLine("clinical_reasoning: string");
+        builder.AppendLine();
+        builder.AppendLine("Return only this JSON object:");
+        builder.AppendLine("{");
+        builder.AppendLine("  \"diagnoses\": []");
+        builder.AppendLine("}");
+
+        return builder.ToString();
+    }
+
+    private async Task ReplaceSessionSymptomsAsync(
+        Guid sessionId,
+        IReadOnlyList<BayesianDiagnosisResponse> diagnoses,
+        CancellationToken cancellationToken)
+    {
+        var existingSymptoms = await _unitOfWork.SessionSymptoms.GetPagedAsync(
+            1,
+            100,
+            symptom => !symptom.IsDeleted && symptom.SymptomAnalysisSessionId == sessionId,
+            query => query.OrderBy(symptom => symptom.SymptomName),
+            asNoTracking: false,
+            cancellationToken: cancellationToken);
+
+        foreach (var existingSymptom in existingSymptoms.Items)
+        {
+            existingSymptom.IsDeleted = true;
+            existingSymptom.UpdatedAt = DateTime.UtcNow;
+        }
+
+        foreach (var diagnosis in diagnoses)
+        {
             _unitOfWork.SessionSymptoms.Add(new SessionSymptom
             {
                 Id = Guid.NewGuid(),
-                SymptomAnalysisSessionId = session.Id,
-                SymptomName = NormalizeTextAllowEmpty(symptom.SymptomName),
-                ConfidenceScore = symptom.ConfidenceScore,
-                ExtractedText = NormalizeTextAllowEmpty(symptom.ExtractedText),
-                CreatedAt = utcNow,
+                SymptomAnalysisSessionId = sessionId,
+                SymptomName = diagnosis.DiseaseName,
+                ConfidenceScore = diagnosis.PAGivenB,
+                ExtractedText =
+                    $"{diagnosis.Icd10Code} | p_A={diagnosis.PA:F4} | p_A|B={diagnosis.PAGivenB:F4} | {diagnosis.ClinicalReasoning}",
+                CreatedAt = DateTime.UtcNow,
             });
         }
-
-        var departmentLookup = BuildDepartmentLookup(departments);
-
-        var rank = 1;
-
-        var orderedRecommendedDepartments =aiJson.RecommendedDepartments.OrderBy(
-
-        recommendedDepartment =>
-
-        {
-            var hasInvalidPriorityRank =recommendedDepartment.PriorityRank <= 0;
-
-            if (hasInvalidPriorityRank)
-            {
-                return int.MaxValue;
-            }
-
-            return recommendedDepartment.PriorityRank;
-        });
-
-        foreach (var recommended in orderedRecommendedDepartments)
-        {
-            if (string.IsNullOrWhiteSpace(recommended.DepartmentName))
-            {
-                continue;
-            }
-             
-            bool found = TryResolveDepartment(recommended.DepartmentName, departmentLookup, departments, out var department);
-
-            if (found==false)
-            {
-                _logger.LogWarning(
-                    "AI recommended department '{DepartmentName}' was not found in database for session {SessionId}.",
-                    recommended.DepartmentName,
-                    session.Id);
-                continue;
-            }
-
-            _unitOfWork.DepartmentRecommendations.Add(new DepartmentRecommendation
-            {
-                Id = Guid.NewGuid(),
-                SymptomAnalysisSessionId = session.Id,
-                DepartmentId = department.Id,
-                ConfidenceScore = recommended.ConfidenceScore,
-                Reason = NormalizeTextAllowEmpty(recommended.Reason),
-                PriorityRank = recommended.PriorityRank > 0 ? recommended.PriorityRank : rank,
-                IsEmergencySuggested = recommended.IsEmergencySuggested || aiJson.IsEmergency,
-                CreatedAt = utcNow,
-            });
-
-            rank++;
-        }
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task MarkSessionFailedAsync(
-        SymptomAnalysisSession session,
-        CancellationToken cancellationToken)
+    private static bool TryParseDiagnosesJson(
+        string content,
+        out IReadOnlyList<MedGemmaDiagnosisJsonItem> diagnoses)
     {
-        session.Status = SymptomAnalysisSessionStatus.Failed;
-        session.UpdatedAt = DateTime.UtcNow;
-        _unitOfWork.SymptomAnalysisSessions.Update(session);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        diagnoses = Array.Empty<MedGemmaDiagnosisJsonItem>();
+
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return false;
+        }
+
+        var normalizedJson = StripMarkdownCodeFence(content);
+        if (string.IsNullOrWhiteSpace(normalizedJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<MedGemmaDiagnosesJsonResponse>(normalizedJson, DiagnosisJsonOptions);
+            if (parsed?.Diagnoses is null || parsed.Diagnoses.Count == 0)
+            {
+                return false;
+            }
+
+            diagnoses = parsed.Diagnoses;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
+    //private method cho SuggestClinicalQuestionAsync
+    private static bool Check2WordDistanceByArray(IReadOnlyList<string> words, string w1, string w2, int maxDistance)
+    {
+        var indicesW1 = Enumerable.Range(0, words.Count).Where(i => words[i] == w1).ToList();
+        var indicesW2 = Enumerable.Range(0, words.Count).Where(i => words[i] == w2).ToList();
+
+        foreach (var index1 in indicesW1)
+        {
+            foreach (var index2 in indicesW2)
+            {
+                var distance = Math.Abs(index1 - index2) - 1;
+                if (distance <= maxDistance)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool Check3WordDistanceByArray(IReadOnlyList<string> words, string w1, string w2, string w3, int maxDistance)
+    {
+        var indicesW1 = Enumerable.Range(0, words.Count).Where(i => words[i] == w1).ToList();
+        var indicesW2 = Enumerable.Range(0, words.Count).Where(i => words[i] == w2).ToList();
+        var indicesW3 = Enumerable.Range(0, words.Count).Where(i => words[i] == w3).ToList();
+        foreach (var index1 in indicesW1)
+        {
+            foreach (var index2 in indicesW2)
+            {
+                foreach (var index3 in indicesW3)
+                {
+                    var distance1 = Math.Abs(index1 - index2) - 1;
+                    var distance2 = Math.Abs(index2 - index3) - 1;
+
+                    if (distance1 <= maxDistance && distance2 <= maxDistance)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    //private method cho GetSessionByIdAsync
     private async Task<SymptomAnalysisResponse> BuildSessionResponseAsync(
         SymptomAnalysisSession session,
         CancellationToken cancellationToken)
@@ -277,6 +705,9 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             q => q.OrderBy(s => s.SymptomName),
             cancellationToken: cancellationToken);
 
+        var sessionAnswers = await _unitOfWork.SessionClinicalQuestionAnswers
+            .GetBySessionIdAsync(sessionId, cancellationToken);
+
         var recommendationsPaged = await _unitOfWork.DepartmentRecommendations.GetPagedAsync(
             1,
             50,
@@ -288,7 +719,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
 
         if (departmentRecommendations.Count > 0)
         {
-            var departments = await LoadActiveDepartmentsAsync(cancellationToken);
+            var departments = await _unitOfWork.MedicalDepartments.GetActiveAsync(cancellationToken);
             var departmentById = departments.ToDictionary(d => d.Id, d => d);
 
             foreach (var recommendation in departmentRecommendations)
@@ -300,276 +731,66 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             }
         }
 
-        IReadOnlyList<RecommendedFacilityResponse> recommendedFacilities;
+        var response = _mapper.Map<SymptomAnalysisResponse>(session);
+        response.Symptoms = _mapper.Map<List<SessionSymptomResponse>>(symptomsPaged.Items);
+        response.Answers = _mapper.Map<List<ClinicalQuestionAnswerResult>>(sessionAnswers);
+        response.RecommendedDepartments =
+            _mapper.Map<List<RecommendedDepartmentResponse>>(departmentRecommendations);
 
-        if (departmentRecommendations.Count == 0)
-        {
-            recommendedFacilities = Array.Empty<RecommendedFacilityResponse>();
-        }
-        else
-        {
-            var departmentIds = departmentRecommendations
-                .Select(d => d.DepartmentId)
-                .Distinct()
-                .ToList();
-
-            var facilityDepartments = await _unitOfWork.MedicalFacilities
-                .GetActiveFacilityDepartmentsByDepartmentIdsAsync(departmentIds, cancellationToken);
-
-            var recommendationByDepartmentId = departmentRecommendations
-                .GroupBy(d => d.DepartmentId)
-                .ToDictionary(g => g.Key, g => g.OrderBy(x => x.PriorityRank).First());
-
-            recommendedFacilities = facilityDepartments
-                .Select(fd =>
-                {
-                    recommendationByDepartmentId.TryGetValue(fd.DepartmentId, out var recommendation);
-                    return new RecommendedFacilityResponse
-                    {
-                        FacilityId = fd.Facility.Id,
-                        FacilityName = fd.Facility.FacilityName,
-                        Address = fd.Facility.Address,
-                        Latitude = fd.Facility.Latitude,
-                        Longitude = fd.Facility.Longitude,
-                        Phone = fd.Facility.Phone,
-                        Website = fd.Facility.Website,
-                        OpeningHours = fd.Facility.OpeningHours,
-                        FacilityType = fd.Facility.FacilityType,
-                        DepartmentId = fd.Department.Id,
-                        DepartmentName = fd.Department.DepartmentName,
-                        ConfidenceScore = recommendation?.ConfidenceScore,
-                        PriorityRank = recommendation?.PriorityRank ?? 0,
-                    };
-                })
-                .Where(f => f.Latitude.HasValue && f.Longitude.HasValue)
-                .OrderBy(f => f.PriorityRank)
-                .ThenByDescending(f => f.ConfidenceScore ?? 0)
-                .ThenBy(f => f.FacilityName, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        return new SymptomAnalysisResponse
-        {
-            SessionId = session.Id,
-            InputText = session.InputText,
-            SeverityLevel = session.SeverityLevel,
-            Status = session.Status,
-            Symptoms = symptomsPaged.Items.Select(s => new SessionSymptomResponse
-            {
-                Id = s.Id,
-                SymptomName = s.SymptomName,
-                ConfidenceScore = s.ConfidenceScore,
-                ExtractedText = s.ExtractedText,
-            }).ToList(),
-            RecommendedDepartments = departmentRecommendations.Select(d => new RecommendedDepartmentResponse
-            {
-                DepartmentId = d.DepartmentId,
-                DepartmentName = d.Department?.DepartmentName,
-                ConfidenceScore = d.ConfidenceScore,
-                Reason = d.Reason,
-                PriorityRank = d.PriorityRank,
-                IsEmergencySuggested = d.IsEmergencySuggested,
-            }).ToList(),
-            RecommendedFacilities = recommendedFacilities,
-        };
+        return response;
     }
 
-    private static ResolvedChatConfig ResolveConfig(AIConfigResponse? aiConfig)
-    {
-        var systemPrompt = string.IsNullOrWhiteSpace(aiConfig?.SystemPrompt)
-            ? FallbackSystemPrompt
-            : aiConfig.SystemPrompt.Trim();
+    //helper
+    private static string? ExtractIcdChapterCode(string? icd10Code)
+   {
+    if (string.IsNullOrWhiteSpace(icd10Code))
+        return null;
 
-        var model = string.Empty;
-        var temperature = DefaultTemperature;
-        var maxTokens = DefaultMaxTokens;
-
-        if (!string.IsNullOrWhiteSpace(aiConfig?.Model))
-        {
-            model = aiConfig.Model.Trim();
-        }
-
-        if (aiConfig?.Temperature is >= 0 and <= 2)
-        {
-            temperature = aiConfig.Temperature.Value;
-        }
-
-        if (aiConfig?.MaxTokens is > 0)
-        {
-            maxTokens = aiConfig.MaxTokens.Value;
-        }
-
-        return new ResolvedChatConfig(systemPrompt, model, temperature, maxTokens);
+    var first = icd10Code.Trim().ToUpperInvariant()[0];
+    return char.IsLetter(first) ? first.ToString() : null;
     }
-
-    private static string BuildUserPrompt(string message, IReadOnlyList<MedicalDepartment> departments)
-    {
-        var departmentPayload = departments.Select(d => new
-        {
-            departmentName = d.DepartmentName,
-        });
-
-        var departmentsJson = JsonSerializer.Serialize(departmentPayload, PromptJsonOptions);
-
-        var builder = new StringBuilder();
-        builder.AppendLine("User symptom description:");
-        builder.AppendLine(message);
-        builder.AppendLine();
-        builder.AppendLine("Available departments (departmentName must match exactly from this list):");
-        builder.AppendLine(departmentsJson);
-        builder.AppendLine();
-        builder.AppendLine("Return only valid JSON. Do not wrap in markdown.");
-        builder.AppendLine("Schema:");
-        builder.AppendLine("{");
-        builder.AppendLine("  \"symptoms\": [");
-        builder.AppendLine("    { \"symptomName\": \"string\", \"confidenceScore\": 0.0, \"extractedText\": \"string\" }");
-        builder.AppendLine("  ],");
-        builder.AppendLine("  \"severityLevel\": \"Mild | Moderate | Severe\",");
-        builder.AppendLine("  \"isEmergency\": true | false,");
-        builder.AppendLine("  \"recommendedDepartments\": [");
-        builder.AppendLine("    {");
-        builder.AppendLine("      \"departmentName\": \"string\",");
-        builder.AppendLine("      \"confidenceScore\": 0.0,");
-        builder.AppendLine("      \"reason\": \"string\",");
-        builder.AppendLine("      \"priorityRank\": 1,");
-        builder.AppendLine("      \"isEmergencySuggested\": true | false");
-        builder.AppendLine("    }");
-        builder.AppendLine("  ]");
-        builder.AppendLine("}");
-        builder.AppendLine();
-        builder.AppendLine("Rules:");
-        builder.AppendLine("- recommendedDepartments.departmentName must use exact names from the departments list.");
-        builder.AppendLine("- isEmergency and isEmergencySuggested must be boolean: true or false (not strings).");
-        builder.AppendLine("- Set isEmergency/isEmergencySuggested to true only for severe or life-threatening symptoms.");
-        builder.AppendLine("- Do not diagnose or prescribe medication.");
-        builder.AppendLine("- priorityRank starts at 1 for the best match.");
-
-        return builder.ToString();
-    }
-
-    private static bool TryParseAiJsonResponse(string content, out SymptomAnalysisAiJsonResponse aiJson)
-    {
-        aiJson = new SymptomAnalysisAiJsonResponse();
-
-        if (string.IsNullOrWhiteSpace(content))
-        {
-            return false;
-        }
-
-        var normalizedJson = content.Trim();
-
-        if (string.IsNullOrWhiteSpace(normalizedJson))
-        {
-            return false;
-        }
-
-        try
-        {
-            var parsed = JsonSerializer.Deserialize<SymptomAnalysisAiJsonResponse>(normalizedJson, AiJsonOptions);
-            if (parsed is null)
-            {
-                return false;
-            }
-
-            aiJson = parsed;
-
-            aiJson.Symptoms ??= [];
-
-            aiJson.RecommendedDepartments ??= [];
-
-            return aiJson.Symptoms.Count > 0 || aiJson.RecommendedDepartments.Count > 0;
-
-        }
-
-        catch (JsonException)
-
-        {
-            return false;
-        }
-    }
-
-   private static Dictionary<string, MedicalDepartment> BuildDepartmentLookup(
-    IReadOnlyList<MedicalDepartment> departments)
-{
    
-    var lookup = new Dictionary<string, MedicalDepartment>(StringComparer.OrdinalIgnoreCase);
+    private static string StripMarkdownCodeFence(string content)
+    {
+        var trimmed = content.Trim();
+        if (!trimmed.StartsWith("```", StringComparison.Ordinal))
+        {
+            return trimmed;
+        }
+
+        trimmed = trimmed[3..];
+        if (trimmed.StartsWith("json", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = trimmed[4..];
+        }
+
+        trimmed = trimmed.TrimStart('\r', '\n', ' ');
+
+        var closingFenceIndex = trimmed.LastIndexOf("```", StringComparison.Ordinal);
+        if (closingFenceIndex >= 0)
+        {
+            trimmed = trimmed[..closingFenceIndex];
+        }
+
+        return trimmed.Trim();
+    }
+
+    // 
+    private static string? NormalizeMatchingText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var normalized = text.ToLowerInvariant();
+        normalized = MatchingPunctuationRegex.Replace(normalized, " ");
+        normalized = MatchingWhitespaceRegex.Replace(normalized, " ").Trim();
+
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
     
-    foreach (var department in departments)
-    {
-        var normalizedName = NormalizeDepartmentName(department.DepartmentName);
-        if (string.IsNullOrEmpty(normalizedName))
-        {
-            continue;
-        }
-        
-        if (lookup.ContainsKey(normalizedName))
-        {
-            continue;
-        }
-
-            lookup[normalizedName] = department;
-    }
-    return lookup;
+     private static readonly Regex MatchingPunctuationRegex = new(@"[.,?!;:]", RegexOptions.Compiled);
+     private static readonly Regex MatchingWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
 }
 
-    private static bool TryResolveDepartment(
-        string departmentName,
-        Dictionary<string, MedicalDepartment> lookup,
-        IReadOnlyList<MedicalDepartment> departments,
-        out MedicalDepartment department)
-    {
-        department = null!;
-
-        var normalized = NormalizeDepartmentName(departmentName);
-
-        if (string.IsNullOrEmpty(normalized))
-        {
-            return false;
-        }
-
-        if (lookup.TryGetValue(normalized, out var found))
-        {
-            department = found;
-            return true;
-        }
-
-        var match = departments.FirstOrDefault(d =>
-        {
-            var dbName = NormalizeDepartmentName(d.DepartmentName);
-            return dbName.Contains(normalized, StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains(dbName, StringComparison.OrdinalIgnoreCase);
-        });
-
-        if (match is null)
-        {
-            return false;
-        }
-
-        department = match;
-        return true;
-    }
-
-
-    private static string NormalizeDepartmentName(string? departmentName)
-    {
-        var hasInvalidDepartmentName = string.IsNullOrWhiteSpace(departmentName);
-
-        if (hasInvalidDepartmentName)
-        {
-            return string.Empty;
-        }
-
-        return departmentName!.Trim().ToLowerInvariant();
-    }
-
-    private static string? NormalizeTextAllowEmpty(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    }
-
-    private sealed record ResolvedChatConfig(
-        string SystemPrompt,
-        string Model,
-        decimal Temperature,
-        int MaxTokens);
-}

@@ -5,4 +5,6 @@ public sealed class UpdateMedicalDepartmentRequest
     public string? DepartmentName { get; set; }
 
     public string? Description { get; set; }
+
+    public string? ChapterCode { get; set; }
 }

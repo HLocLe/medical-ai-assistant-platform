@@ -27,6 +27,19 @@ public sealed class SymptomAnalysisSessionConfiguration : IEntityTypeConfigurati
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Property(x => x.ChapterCode)
+            .HasMaxLength(10);
+
+        builder.HasOne(x => x.IcdChapter)
+            .WithMany(x => x.SymptomAnalysisSessions)
+            .HasForeignKey(x => x.ChapterCode)
+            .HasPrincipalKey(x => x.ChapterCode)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(x => x.ChapterCode);
+        builder.HasIndex(x => x.UserId);
+
         builder.HasMany(x => x.SessionSymptoms)
             .WithOne(x => x.SymptomAnalysisSession)
             .HasForeignKey(x => x.SymptomAnalysisSessionId)

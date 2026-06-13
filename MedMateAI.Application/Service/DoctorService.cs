@@ -12,7 +12,6 @@ namespace MedMateAI.Application.Service;
 
 public sealed class DoctorService : IDoctorService
 {
-    private const string ActiveDoctorsCacheKey = "doctors:active";
     private const string DoctorCacheKeyPrefix = "doctors:";
 
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
@@ -62,51 +61,33 @@ public sealed class DoctorService : IDoctorService
         };
     }
 
-    public async Task<IReadOnlyList<DoctorResponse>> ListActiveDoctorsAsync(
+    public async Task<PagedResponse<DoctorResponse>> ListActiveDoctorsAsync(
+        int pageNumber,
+        int pageSize,
         Guid? facilityId = null,
         Guid? departmentId = null,
         string? search = null,
         DepartmentRole? departmentRole = null,
         CancellationToken cancellationToken = default)
     {
-        var shouldUseCache =
-            !facilityId.HasValue
-            && !departmentId.HasValue
-            && !departmentRole.HasValue
-            && string.IsNullOrWhiteSpace(search);
-
-        if (shouldUseCache)
-        {
-            var cached = await _cache.GetStringAsync(ActiveDoctorsCacheKey, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(cached))
-            {
-                var cachedResponse = JsonSerializer.Deserialize<List<DoctorResponse>>(cached);
-                if (cachedResponse is not null)
-                {
-                    return cachedResponse;
-                }
-            }
-        }
-
-        var entities = await _unitOfWork.Doctors.GetActiveWithDetailsAsync(
+        var paged = await _unitOfWork.Doctors.GetPagedWithDetailsAsync(
+            pageNumber,
+            pageSize,
+            search,
             facilityId,
             departmentId,
-            search,
+            isActive: true,
             departmentRole,
             cancellationToken);
 
-        var response = entities.Select(MapToResponse).ToList();
-
-        if (shouldUseCache)
+        return new PagedResponse<DoctorResponse>
         {
-            await _cache.SetStringAsync(
-                ActiveDoctorsCacheKey,
-                JsonSerializer.Serialize(response),
-                CacheOptions,
-                cancellationToken);
-        }
-
-        return response;
+            PageNumber = paged.PageNumber,
+            PageSize = paged.PageSize,
+            TotalCount = paged.TotalCount,
+            TotalPages = paged.TotalPages,
+            Items = paged.Items.Select(MapToResponse).ToList(),
+        };
     }
 
     public async Task<DoctorResponse?> GetDoctorByIdAsync(
@@ -517,10 +498,9 @@ public sealed class DoctorService : IDoctorService
         };
     }
 
-    private async Task InvalidateDoctorCachesAsync(Guid id, CancellationToken cancellationToken)
+    private Task InvalidateDoctorCachesAsync(Guid id, CancellationToken cancellationToken)
     {
-        await _cache.RemoveAsync(ActiveDoctorsCacheKey, cancellationToken);
-        await _cache.RemoveAsync(GetDoctorCacheKey(id), cancellationToken);
+        return _cache.RemoveAsync(GetDoctorCacheKey(id), cancellationToken);
     }
 
     private static string? NormalizeText(string? value)

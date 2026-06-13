@@ -22,17 +22,20 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
     };
 
     private readonly IGenericRepository<MedicalDepartment> _medicalDepartmentRepository;
+    private readonly IGenericRepository<IcdChapter> _icdChapterRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDistributedCache _cache;
     private readonly ILogger<MedicalDepartmentService> _logger;
 
     public MedicalDepartmentService(
         IGenericRepository<MedicalDepartment> medicalDepartmentRepository,
+        IGenericRepository<IcdChapter> icdChapterRepository,
         IUnitOfWork unitOfWork,
         IDistributedCache cache,
         ILogger<MedicalDepartmentService> logger)
     {
         _medicalDepartmentRepository = medicalDepartmentRepository;
+        _icdChapterRepository = icdChapterRepository;
         _unitOfWork = unitOfWork;
         _cache = cache;
         _logger = logger;
@@ -132,11 +135,27 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
             return (false, new[] { "Department name is required." }, null);
         }
 
+        var chapterCode = NormalizeChapterCode(request.ChapterCode);
+        
+
+        if (chapterCode is not null)
+        {
+            var chapterExists = await _icdChapterRepository.FirstOrDefaultAsync(
+                chapter => chapter.ChapterCode == chapterCode && !chapter.IsDeleted,
+                cancellationToken: cancellationToken);
+
+            if (chapterExists is null)
+            {
+                return (false, new[] { $"ICD chapter '{chapterCode}' was not found." }, null);
+            }
+        }
+
         var entity = new MedicalDepartment
         {
             Id = Guid.NewGuid(),
             DepartmentName = request.DepartmentName.Trim(),
             Description = request.Description,
+            ChapterCode = chapterCode,
             CreatedAt = DateTime.UtcNow,
         };
 
@@ -178,6 +197,24 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
             entity.Description = request.Description;
         }
 
+        if (request.ChapterCode is not null)
+        {
+           
+                var chapterCode = NormalizeChapterCode(request.ChapterCode);
+              
+                var chapterExists = await _icdChapterRepository.FirstOrDefaultAsync(
+                    chapter => chapter.ChapterCode == chapterCode && !chapter.IsDeleted,
+                    cancellationToken: cancellationToken);
+
+                if (chapterExists is null)
+                {
+                    return (false, false, new[] { $"ICD chapter '{chapterCode}' was not found." }, null);
+                }
+
+                entity.ChapterCode = chapterCode;
+            }
+        
+
         entity.UpdatedAt = DateTime.UtcNow;
 
         _medicalDepartmentRepository.Update(entity);
@@ -213,6 +250,16 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
         return (true, false, Array.Empty<string>());
     }
 
+    private static string? NormalizeChapterCode(string? chapterCode)
+    {
+        if (string.IsNullOrWhiteSpace(chapterCode))
+        {
+            return null;
+        }
+
+        return chapterCode.Trim().ToUpperInvariant();
+    }
+
     private static MedicalDepartmentResponse MapToResponse(MedicalDepartment entity)
     {
         return new MedicalDepartmentResponse
@@ -220,6 +267,7 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
             Id = entity.Id,
             DepartmentName = entity.DepartmentName,
             Description = entity.Description,
+            ChapterCode = entity.ChapterCode,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
         };

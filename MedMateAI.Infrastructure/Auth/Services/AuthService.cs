@@ -192,6 +192,7 @@ public sealed class AuthService : IAuthService
         var credential = request.Credential.Trim().Trim('"');
 
         GoogleJsonWebSignature.Payload payload;
+
         try
         {
             payload = await GoogleJsonWebSignature.ValidateAsync(
@@ -201,6 +202,7 @@ public sealed class AuthService : IAuthService
                     Audience = new[] { clientId },
                 });
         }
+
         catch
         {
             return (false, Array.Empty<string>(), null);
@@ -251,6 +253,7 @@ public sealed class AuthService : IAuthService
         CancellationToken cancellationToken = default)
     {
         var httpContext = _httpContextAccessor.HttpContext;
+
         if (httpContext is null ||
             !httpContext.Request.Cookies.TryGetValue("refreshToken", out var refreshTokenRaw) ||
             string.IsNullOrWhiteSpace(refreshTokenRaw))
@@ -259,6 +262,7 @@ public sealed class AuthService : IAuthService
         }
 
         var hash = RefreshTokenHasher.Sha256Hex(refreshTokenRaw.Trim());
+
         var utcNow = DateTime.UtcNow;
 
         var existing = await _db.RefreshTokens
@@ -489,6 +493,7 @@ public sealed class AuthService : IAuthService
 
        
         var httpContext = _httpContextAccessor.HttpContext;
+
         if (httpContext is not null)
         {
             httpContext.Response.Cookies.Append(
@@ -497,7 +502,7 @@ public sealed class AuthService : IAuthService
                 new CookieOptions
                 {
                     HttpOnly = true,
-                    Secure = true ,
+                    Secure = true,
                     SameSite = SameSiteMode.None,
                     Expires = refreshExpires,
                     Path = "/",

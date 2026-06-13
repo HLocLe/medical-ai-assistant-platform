@@ -67,9 +67,10 @@ public sealed class DoctorsController : ControllerBase
     }
 
     [HttpGet("active")]
-    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<DoctorResponse>>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<DoctorResponse>>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<DoctorResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<DoctorResponse>>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ListActive(
+        [FromQuery] PaginationQuery query,
         [FromQuery] Guid? facilityId,
         [FromQuery] Guid? departmentId,
         [FromQuery] string? search,
@@ -78,7 +79,7 @@ public sealed class DoctorsController : ControllerBase
     {
         if (facilityId.HasValue && facilityId.Value == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<DoctorResponse>>
+            return BadRequest(new ApiResponse<PagedResponse<DoctorResponse>>
             {
                 Success = false,
                 Message = "Invalid medical facility id.",
@@ -87,7 +88,7 @@ public sealed class DoctorsController : ControllerBase
 
         if (departmentId.HasValue && departmentId.Value == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<DoctorResponse>>
+            return BadRequest(new ApiResponse<PagedResponse<DoctorResponse>>
             {
                 Success = false,
                 Message = "Invalid medical department id.",
@@ -95,13 +96,15 @@ public sealed class DoctorsController : ControllerBase
         }
 
         var data = await _doctorService.ListActiveDoctorsAsync(
+            query.PageNumber,
+            query.PageSize,
             facilityId,
             departmentId,
             search,
             departmentRole,
             cancellationToken);
 
-        return Ok(new ApiResponse<IReadOnlyList<DoctorResponse>>
+        return Ok(new ApiResponse<PagedResponse<DoctorResponse>>
         {
             Success = true,
             Message = "OK",

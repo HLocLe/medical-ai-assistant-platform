@@ -5,6 +5,7 @@ namespace MedMateAI.Domain.Entities;
 public sealed class Doctor : BaseEntity
 {
     public Guid? UserId { get; set; }
+    
     public Guid FacilityDepartmentId { get; set; }
 
     public string? FullName { get; set; }
