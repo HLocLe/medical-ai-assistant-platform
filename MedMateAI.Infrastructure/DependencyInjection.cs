@@ -70,6 +70,7 @@ public static class DependencyInjection
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IMedicalDepartmentService, MedicalDepartmentService>();
         services.AddScoped<IIcdChapterService, IcdChapterService>();
+        services.AddScoped<IDiseasePriorProbabilityService, DiseasePriorProbabilityService>();
         services.AddScoped<ILabIndicatorService, LabIndicatorService>();
         services.AddScoped<ILabTestService, LabTestService>();
         services.AddScoped<ILabTestAnalyticsRepository, LabTestAnalyticsRepository>();
@@ -383,7 +384,7 @@ public static class DependencyInjection
            "JWT secret must be at least 32 chars.")
          .ValidateOnStart();
         
-        services.AddAutoMapper(cfg => { }, typeof(UserMappingProfile), typeof(PatientProfileMappingProfile), typeof(IcdChapterMappingProfile), typeof(ClinicalQuestionMappingProfile), typeof(MedicalFacilityMappingProfile), typeof(SymptomAnalysisMappingProfile), typeof(LabIndicatorMappingProfile), typeof(DepartmentConsultationQuestionMappingProfile), typeof(ChecklistItemMappingProfile));
+        services.AddAutoMapper(cfg => { }, typeof(UserMappingProfile), typeof(PatientProfileMappingProfile), typeof(IcdChapterMappingProfile), typeof(DiseasePriorProbabilityMappingProfile), typeof(ClinicalQuestionMappingProfile), typeof(MedicalFacilityMappingProfile), typeof(SymptomAnalysisMappingProfile), typeof(LabIndicatorMappingProfile), typeof(DepartmentConsultationQuestionMappingProfile), typeof(ChecklistItemMappingProfile));
 
         services.AddAuthentication(options =>
             {
